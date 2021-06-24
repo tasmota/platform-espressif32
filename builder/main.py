@@ -101,9 +101,35 @@ def _to_unix_slashes(path):
 
 
 #
-# SPIFFS helpers
+# SPIFFS / FFAT helpers
 #
 
+def fetch_ffat_size(env):
+    ffat = None
+    for p in _parse_partitions(env):
+        if p['type'] == "data" and p['subtype'] == "fat":
+            ffat = p
+    if not ffat:
+        sys.stderr.write(
+            "Could not find the `fat` section in the partitions "
+            "table %s\n" % env.subst("$PARTITIONS_TABLE_CSV")
+        )
+        env.Exit(1)
+        return
+    # we parse the offset and size attributes from the CSV.
+    # *HOWEVER* we do add a magic offset here. We need to flash the binary at an additional offset of +0x1000 bytes
+    # and also reduce the size by 0x1000 bytes in return.
+    # Arduino does not recognize hte partition without it (error mounting fatfs partition: -1)
+    # from https://github.com/lorol/arduino-esp32fs-plugin#notes-for-fatfs
+    # The usable size of FAT partition is reduced with 1 sector of 4096 bytes (0x1000) to resolve wear leveling space requirement. The image file is flashed with +4096 bytes (0x1000) offset of partition address of csv table entry
+    # also see https://github.com/lorol/arduino-esp32fs-plugin/blob/39d457d51490636dcd2074647ddbab1ff2f8e812/src/ESP32FS.java#L190
+    env["FFAT_START"] = _parse_size(ffat['offset']) + 0x1000 
+    env["SPIFFS_START"] = env["FFAT_START"] # compatiblity so we don't have to change upload logic
+    env["FFAT_SIZE"] = _parse_size(ffat['size']) - 0x1000
+
+def __fetch_ffat_size(target, source, env):
+    fetch_ffat_size(env)
+    return (target, source)
 
 def fetch_spiffs_size(env):
     spiffs = None
@@ -136,6 +162,8 @@ mcu = board.get("build.mcu", "esp32")
 toolchain_arch = "xtensa-%s" % mcu
 if mcu == "esp32c3":
     toolchain_arch = "riscv32-esp"
+filesystem = board.get("build.filesystem", "spiffs")
+print("Filesystem is: " + filesystem)
 
 env.Replace(
     __get_board_f_flash=_get_board_f_flash,
@@ -164,9 +192,9 @@ env.Replace(
     ],
     ERASECMD='"$PYTHONEXE" "$OBJCOPY" $ERASEFLAGS erase_flash',
 
-    MKSPIFFSTOOL="mkspiffs_${PIOPLATFORM}_" + ("espidf" if "espidf" in env.subst(
+    MKSPIFFSTOOL= "mkfat" if filesystem == "ffat" else "mkspiffs_${PIOPLATFORM}_" + ("espidf" if "espidf" in env.subst(
         "$PIOFRAMEWORK") else "${PIOFRAMEWORK}"),
-    ESP32_SPIFFS_IMAGE_NAME=env.get("ESP32_SPIFFS_IMAGE_NAME", "spiffs"),
+    ESP32_SPIFFS_IMAGE_NAME=env.get("ESP32_SPIFFS_IMAGE_NAME", filesystem),
     ESP32_APP_OFFSET="0x10000",
 
     PROGSUFFIX=".elf"
@@ -193,7 +221,7 @@ env.Append(
             ]), "Building $TARGET"),
             suffix=".bin"
         ),
-        DataToBin=Builder(
+        DataSPIFFSToBin=Builder(
             action=env.VerboseAction(" ".join([
                 '"$MKSPIFFSTOOL"',
                 "-c", "$SOURCES",
@@ -203,6 +231,17 @@ env.Append(
                 "$TARGET"
             ]), "Building SPIFFS image from '$SOURCES' directory to $TARGET"),
             emitter=__fetch_spiffs_size,
+            source_factory=env.Dir,
+            suffix=".bin"
+        ),
+        DataFFatToBin=Builder(
+            action=env.VerboseAction(" ".join([
+                '"$MKSPIFFSTOOL"',
+                "-c", "$SOURCES",
+                "-s", "$FFAT_SIZE",
+                "$TARGET"
+            ]), "Building FFat image from '$SOURCES' directory to $TARGET"),
+            emitter=__fetch_ffat_size,
             source_factory=env.Dir,
             suffix=".bin"
         )
@@ -220,15 +259,25 @@ target_elf = None
 if "nobuild" in COMMAND_LINE_TARGETS:
     target_elf = join("$BUILD_DIR", "${PROGNAME}.elf")
     if set(["uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
-        fetch_spiffs_size(env)
+        if filesystem == "ffat":
+            fetch_ffat_size(env)
+        else:
+            fetch_spiffs_size(env)
         target_firm = join("$BUILD_DIR", "${ESP32_SPIFFS_IMAGE_NAME}.bin")
     else:
         target_firm = join("$BUILD_DIR", "${PROGNAME}.bin")
 else:
     target_elf = env.BuildProgram()
     if set(["buildfs", "uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
-        target_firm = env.DataToBin(
-            join("$BUILD_DIR", "${ESP32_SPIFFS_IMAGE_NAME}"), "$PROJECTDATA_DIR")
+        if filesystem not in ("ffat", "spiffs"):
+            sys.stderr.write("Filesystem %s is not supported!\n" % filesystem)
+            env.Exit(1)
+        if filesystem == "ffat":
+            target_firm = env.DataFFatToBin(
+                join("$BUILD_DIR", "${ESP32_SPIFFS_IMAGE_NAME}"), "$PROJECTDATA_DIR")
+        else:
+            target_firm = env.DataSPIFFSToBin(
+                join("$BUILD_DIR", "${ESP32_SPIFFS_IMAGE_NAME}"), "$PROJECTDATA_DIR")
         env.NoCache(target_firm)
         AlwaysBuild(target_firm)
     else:
