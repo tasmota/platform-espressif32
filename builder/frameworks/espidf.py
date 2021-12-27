@@ -543,8 +543,9 @@ def generate_project_ld_script(sdk_config, ignore_targets=None):
         os.path.join(
             FRAMEWORK_DIR,
             "components",
-            idf_variant,
+            "esp_system",
             "ld",
+            idf_variant,
             "%s.project.ld.in" % idf_variant,
         ),
         env.VerboseAction(cmd, "Generating project linker script $TARGET"),
@@ -1060,22 +1061,36 @@ create_version_file()
 #
 
 if not board.get("build.ldscript", ""):
-    linker_script = env.Command(
-        os.path.join("$BUILD_DIR", "%s_out.ld" % idf_variant),
+    linker_script_mem = env.Command(
+        os.path.join("$BUILD_DIR", "memory.ld"),
         board.get(
-            "build.esp-idf.ldscript",
+            "build.esp-idf.memory_ldscript",
             os.path.join(
-                FRAMEWORK_DIR, "components", idf_variant, "ld", "%s.ld" % idf_variant
+                FRAMEWORK_DIR, "components", "esp_system", "ld", idf_variant, "memory.ld.in"
             ),
         ),
         env.VerboseAction(
-            '$CC -I"$BUILD_DIR/config" -C -P -x  c -E $SOURCE -o $TARGET',
-            "Generating LD script $TARGET",
+            '$CC -I"$BUILD_DIR/config" -I"$BUILD_DIR" -I"%s" -C -P -x  c -E $SOURCE -o $TARGET' % os.path.join(FRAMEWORK_DIR, "components", "esp_system", "ld"),
+            "Generating Memory LD script $TARGET",
+        ),
+    )
+    linker_script_sections = env.Command(
+        os.path.join("$BUILD_DIR", "sections.ld"),
+        board.get(
+            "build.esp-idf.sections_ldscript",
+            os.path.join(
+                FRAMEWORK_DIR, "components", "esp_system", "ld", idf_variant, "sections.ld.in"
+            ),
+        ),
+        env.VerboseAction(
+            '$CC -I"$BUILD_DIR/config" -I"$BUILD_DIR" -I"%s" -C -P -x  c -E $SOURCE -o $TARGET' % os.path.join(FRAMEWORK_DIR, "components", "esp_system", "ld"),
+            "Generating Memory LD script $TARGET",
         ),
     )
 
-    env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", linker_script)
-    env.Replace(LDSCRIPT_PATH="%s_out.ld" % idf_variant)
+    env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", linker_script_mem)
+    env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", linker_script_sections)
+    env.Replace(LDSCRIPT_PATH="sections.ld")
 
 #
 # Generate partition table
@@ -1199,10 +1214,10 @@ if project_target_name != "__idf_main" and "__idf_main" in target_configs:
     )
     env.Exit(1)
 
-project_ld_scipt = generate_project_ld_script(
-    sdk_config, [project_target_name, "__pio_env"]
-)
-env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", project_ld_scipt)
+#project_ld_scipt = generate_project_ld_script(
+#    sdk_config, [project_target_name, "__pio_env"]
+#)
+#env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", project_ld_scipt)
 
 elf_config = get_project_elf(target_configs)
 default_config_name = find_default_component(target_configs)
@@ -1218,8 +1233,8 @@ if not elf_config:
     sys.stderr.write("Error: Couldn't load the main firmware target of the project\n")
     env.Exit(1)
 
-for component_config in framework_components_map.values():
-    env.Depends(project_ld_scipt, component_config["lib"])
+#for component_config in framework_components_map.values():
+#    env.Depends(project_ld_scipt, component_config["lib"])
 
 project_config = target_configs.get(project_target_name, {})
 default_config = target_configs.get(default_config_name, {})
