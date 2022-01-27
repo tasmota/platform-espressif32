@@ -15,6 +15,7 @@ jobs:
           - "examples/arduino-wifiscan"
           - "examples/espidf-arduino-blink"
           - "examples/espidf-arduino-wifiscan"
+          - "examples/espidf-blink"
           - "examples/espidf-aws-iot"
           - "examples/espidf-ble-eddystone"
           - "examples/espidf-coap-server"

@@ -38,6 +38,7 @@ class Espressif32Platform(PlatformBase):
 
         xtensa_toolchain = "toolchain-xtensa-esp32"
         xtensa32s2_toolchain = "toolchain-xtensa-esp32s2"
+        xtensa32s3_toolchain = "toolchain-xtensa-esp32s3"
         riscv_toolchain = "toolchain-riscv32-esp"
  
         if "espidf" in frameworks:
@@ -53,13 +54,16 @@ class Espressif32Platform(PlatformBase):
             self.packages[xtensa_toolchain]["version"] = "8.4.0+2021r2-patch2"
             self.packages[xtensa_toolchain]["optional"] = False
 
-        if mcu in ("esp32s2", "esp32c3"):
+        if mcu in ("esp32s2", "esp32s3", "esp32c3"):
             self.packages.pop(xtensa_toolchain, None)
             self.packages.pop("toolchain-esp32ulp", None)
             # RISC-V based toolchain for ESP32C3 and ESP32S2 ULP
             self.packages[riscv_toolchain]["optional"] = False
             if mcu == "esp32s2":
                 self.packages[xtensa32s2_toolchain]["optional"] = False
+                self.packages["toolchain-esp32s2ulp"]["optional"] = False
+            if mcu == "esp32s3":
+                self.packages[xtensa32s3_toolchain]["optional"] = False
                 self.packages["toolchain-esp32s2ulp"]["optional"] = False
 
         build_core = variables.get(
