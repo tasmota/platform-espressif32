@@ -231,7 +231,7 @@ def populate_idf_env_vars(idf_env):
             os.path.join(
                 platform.get_package_dir(
                     "toolchain-%sulp"
-                    % ("esp32s2" if mcu == "esp32s3" else mcu)
+                    % ("esp32s2" if (mcu == "esp32s3" or mcu == "esp32s2") else mcu)
                 ),
                 "bin"
               ),
