@@ -17,6 +17,7 @@
     "openocd_target": "esp32s3.cfg"
   },
   "frameworks": [
+    "arduino",
     "espidf"
   ],
   "name": "Espressif ESP32-S3-DevKitC-1",
