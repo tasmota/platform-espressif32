@@ -11,7 +11,8 @@
     "variant": "esp32s2"
   },
   "connectivity": [
-    "wifi"
+    "arduino",
+    "espidf"
   ],
   "debug": {
     "openocd_target": "esp32s2.cfg"
