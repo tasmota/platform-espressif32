@@ -130,7 +130,7 @@
       "type": "framework",
       "optional": true,
       "owner": "platformio",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v4.4/esp-idf-v4.4.zip"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v.4.4.0/esp-idf-v4.4.zip"
     },
     "framework-simba": {
       "type": "framework",
