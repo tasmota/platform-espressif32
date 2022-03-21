@@ -118,7 +118,7 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/767/framework-arduinoespressif32-v4.4_dev-40d126bfd1.tar.gz"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/773/framework-arduinoespressif32-v4.4_dev-40d126bfd1.tar.gz"
     },
     "framework-arduino-mbcwb": {
       "type": "framework",
@@ -147,7 +147,7 @@
     "tool-esptoolpy": {
       "type": "uploader",
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esptool/releases/download/v3.2.2/esptool-3.2.2.zip"
+      "version": "https://github.com/tasmota/esptool/releases/download/v3.2.3/esptool-3.2.3.zip"
     },
     "tool-mbctool": {
       "optional": true,
