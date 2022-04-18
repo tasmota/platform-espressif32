@@ -80,24 +80,28 @@
     },
     "toolchain-xtensa-esp32": {
       "type": "toolchain",
+      "optional": true,
       "version": "https://github.com/Jason2866/crosstool-NG/releases/download/8.4.0/toolchain-xtensa-esp32.tar.gz",
       "owner": "espressif",
       "optionalVersions": ["8.4.0+2021r2-patch3"]
     },
     "toolchain-xtensa-esp32s2": {
       "type": "toolchain",
+      "optional": true,
       "version": "https://github.com/Jason2866/crosstool-NG/releases/download/8.4.0/toolchain-xtensa-esp32s2.tar.gz",
       "owner": "espressif",
       "optionalVersions": ["8.4.0+2021r2-patch3"]
     },
     "toolchain-xtensa-esp32s3": {
       "type": "toolchain",
+      "optional": true,
       "version": "https://github.com/Jason2866/crosstool-NG/releases/download/8.4.0/toolchain-xtensa-esp32s3.tar.gz",
       "owner": "espressif",
       "optionalVersions": ["8.4.0+2021r2-patch3"]
     },
     "toolchain-riscv32-esp": {
       "type": "toolchain",
+      "optional": true,
       "version": "https://github.com/Jason2866/crosstool-NG/releases/download/8.4.0/toolchain-riscv32-esp.tar.gz",
       "owner": "espressif",
       "optionalVersions": ["8.4.0+2021r2-patch3"]
