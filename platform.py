@@ -105,13 +105,15 @@ class Espressif32Platform(PlatformBase):
                 ):
                     self.packages[toolchain]["version"] = "8.4.0+2021r2-patch3"
 
-        if mcu in ("esp32s2", "esp32c3"):
+        if mcu in ("esp32s2", "esp32s3", "esp32c3"):
             self.packages.pop("toolchain-xtensa-esp32", None)
             self.packages.pop("toolchain-esp32ulp", None)
             # RISC-V based toolchain for ESP32C3 and ESP32S2 ULP
             self.packages["toolchain-riscv32-esp"]["optional"] = False
             if mcu == "esp32s2":
                 self.packages["toolchain-xtensa-esp32s2"]["optional"] = False
+            if mcu == "esp32s3":
+                self.packages["toolchain-xtensa-esp32s3"]["optional"] = False
 
         is_legacy_project = (
             build_core == "mbcwb"
