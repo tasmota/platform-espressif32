@@ -95,16 +95,6 @@ class Espressif32Platform(PlatformBase):
                 elif p in ("tool-mconf", "tool-idf") and "windows" in get_systype():
                     self.packages[p]["optional"] = False
 
-            # Toolchains for stable IDF are different from Arduino
-            #if len(frameworks) == 1:
-            #    for toolchain in (
-            #        "toolchain-xtensa-esp32",
-            #        "toolchain-xtensa-esp32s2",
-            #        "toolchain-xtensa-esp32s3",
-            #        "toolchain-riscv32-esp",
-            #    ):
-            #        self.packages[toolchain]["version"] = "8.4.0+2021r2-patch3"
-
         if mcu in ("esp32s2", "esp32s3", "esp32c3"):
             self.packages.pop("toolchain-xtensa-esp32", None)
             self.packages.pop("toolchain-esp32ulp", None)
@@ -118,7 +108,6 @@ class Espressif32Platform(PlatformBase):
         is_legacy_project = (
             build_core == "mbcwb"
             or set(("simba", "pumbaa")) & set(frameworks)
-            or set(("arduino", "espidf")) == set(frameworks)
         )
 
         if is_legacy_project:
@@ -139,11 +128,6 @@ class Espressif32Platform(PlatformBase):
                 if "arduino" in frameworks and build_core != "mbcwb"
                 else "~2.50200.0",
             }
-
-            # Legacy setting for mixed IDF+Arduino projects
-            #if set(("arduino", "espidf")) == set(frameworks):
-            #    # Arduino component is not compatible with ESP-IDF >=4.1
-            #    self.packages["framework-espidf"]["version"] = "~3.40001.0"
 
             if build_core == "mbcwb":
                 self.packages["framework-arduinoespressif32"]["optional"] = True
