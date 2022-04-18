@@ -4,6 +4,7 @@
       "ld": "esp32s2_out.ld"
     },
     "core": "esp32",
+    "extra_flags": "-DBOARD_HAS_PSRAM",
     "f_cpu": "240000000L",
     "f_flash": "80000000L",
     "flash_mode": "dio",
@@ -11,6 +12,8 @@
     "variant": "esp32s2"
   },
   "connectivity": [
+    "arduino",
+    "espidf",
     "wifi"
   ],
   "debug": {
