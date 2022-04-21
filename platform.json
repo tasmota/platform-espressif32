@@ -32,7 +32,8 @@
       "title": "Espressif IoT Development Framework"
     }
   },
-  "framework-arduinoespressif32": {
+  "packages": {
+    "framework-arduinoespressif32": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
@@ -44,7 +45,6 @@
       "owner": "platformio",
       "version": "https://github.com/tasmota/esp-idf/releases/download/v.4.4.0/esp-idf-v4.4.zip"
     },
-  "packages": {
     "toolchain-xtensa-esp32": {
       "type": "toolchain",
       "owner": "espressif",
