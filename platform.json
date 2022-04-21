@@ -38,6 +38,12 @@
       "owner": "tasmota",
       "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/803/framework-arduinoespressif32-v4.4_dev-40d126bfd1.tar.gz"
     },
+    "framework-espidf": {
+      "type": "framework",
+      "optional": true,
+      "owner": "platformio",
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v.4.4.0/esp-idf-v4.4.zip"
+    },
   "packages": {
     "toolchain-xtensa-esp32": {
       "type": "toolchain",
@@ -79,12 +85,6 @@
       "optional": true,
       "owner": "meteca",
       "version": ">=2.1.1"
-    },
-    "framework-espidf": {
-      "type": "framework",
-      "optional": true,
-      "owner": "platformio",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v.4.4.0/esp-idf-v4.4.zip"
     },
     "tool-esptoolpy": {
       "type": "uploader",
