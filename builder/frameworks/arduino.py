@@ -29,7 +29,8 @@ from SCons.Script import DefaultEnvironment, SConscript
 env = DefaultEnvironment()
 board = env.BoardConfig()
 extra_flags = board.get("build.extra_flags", "")
-extra_flags = extra_flags.replace("-D", " ")
+extra_flags = [element.replace("-D", " ") for element in extra_flags]
+extra_flags = ''.join(extra_flags)
 build_flags = env.GetProjectOption("build_flags")
 build_flags = [element.replace("-D", " ") for element in build_flags]
 build_flags = ''.join(build_flags)
