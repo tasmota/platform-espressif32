@@ -37,7 +37,7 @@ build_flags = ''.join(build_flags)
 
 SConscript("_embed_files.py", exports="env")
 
-if "arduino" in env.subst("$PIOFRAMEWORK") and "CORE32SOLO1" in extra_flags and "espidf" not in env.subst("$PIOFRAMEWORK"):
+if ("CORE32SOLO1" in extra_flags or "FRAMEWORK_ARDUINO_SOLO1" in build_flags) and ("arduino" in env.subst("$PIOFRAMEWORK") and "espidf" not in env.subst("$PIOFRAMEWORK")):
     SConscript(
         join(DefaultEnvironment().PioPlatform().get_package_dir(
             "framework-arduino-solo1"), "tools", "platformio-build.py"))
