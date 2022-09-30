@@ -21,7 +21,9 @@ import requests
 
 from platformio.public import PlatformBase, to_unix_path
 
+
 IS_WINDOWS = sys.platform.startswith("win")
+
 
 class Espressif32Platform(PlatformBase):
     def configure_default_packages(self, variables, targets):
@@ -110,7 +112,6 @@ class Espressif32Platform(PlatformBase):
         if board.get("build.mcu", "") in ("esp32c3", "esp32s3"):
             supported_debug_tools.append("esp-builtin")
 
-
         upload_protocol = board.manifest.get("upload", {}).get("protocol")
         upload_protocols = board.manifest.get("upload", {}).get("protocols", [])
         if debug:
@@ -184,6 +185,11 @@ class Espressif32Platform(PlatformBase):
     def configure_debug_session(self, debug_config):
         build_extra_data = debug_config.build_data.get("extra", {})
         flash_images = build_extra_data.get("flash_images", [])
+
+        if "openocd" in (debug_config.server or {}).get("executable", ""):
+            debug_config.server["arguments"].extend(
+                ["-c", "adapter speed %s" % (debug_config.speed or "5000")]
+            )
 
         ignore_conds = [
             debug_config.load_cmds != ["load"],
