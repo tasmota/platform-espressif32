@@ -20,8 +20,7 @@
       ]
     ],
     "mcu": "esp32s3",
-    "variant": "esp32s3",
-    "partitions": "partitions/esp32_partition_app2944k_fs10M.csv"
+    "variant": "esp32s3"
   },
   "connectivity": [
     "wifi",
