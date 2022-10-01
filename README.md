@@ -25,7 +25,7 @@ framework = arduino, espidf
 to use the ESP32 Solo1 Arduino framework add in your env
 ```
 [env:esp32solo1]
-board = every esp32 board can be used
+board = esp32-solo1
 build_flags = -DFRAMEWORK_ARDUINO_SOLO1
 ```
 The frameworks are here [https://github.com/tasmota/arduino-esp32/releases](https://github.com/tasmota/arduino-esp32/releases)
