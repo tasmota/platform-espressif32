@@ -260,6 +260,8 @@ env.Replace(
         "ESP32_FS_IMAGE_NAME", env.get("ESP32_SPIFFS_IMAGE_NAME", filesystem)
     ),
 
+    ESP32_APP_OFFSET=board.get("upload.offset_address", "0x10000"),
+
     PROGSUFFIX=".elf"
 )
 
