@@ -15,11 +15,11 @@ Espressif Systems is a privately held fabless semiconductor company. They provid
 1. [Install PlatformIO](http://platformio.org)
 2. Create PlatformIO project and configure a platform option in [platformio.ini](http://docs.platformio.org/page/projectconf.html) file:
 
-### Stable Release supporting Arduino and IDF
-based on Arduino Core 2.0.5 and can be used with Platformio for the ESP32/ESP32solo1, ESP32C3, ESP32S2 and ESP32S3
+### Stable Release supporting Arduino and IDF 4.4.3
+based on Arduino Core 2.0.6 and can be used with Platformio for the ESP32/ESP32solo1, ESP32C3, ESP32S2 and ESP32S3
 ```                  
 [platformio]
-platform = https://github.com/tasmota/platform-espressif32/releases/download/v2.0.5.1/platform-espressif32-2.0.5.1.zip
+platform = https://github.com/tasmota/platform-espressif32/releases/download/2022.12.2/platform-espressif32.zip
 framework = arduino
 ```
 to use the ESP32 Solo1 Arduino framework add in your env
