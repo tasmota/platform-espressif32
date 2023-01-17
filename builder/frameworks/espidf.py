@@ -25,6 +25,7 @@ import json
 import subprocess
 import sys
 import os
+import pkg_resources
 
 import click
 import semantic_version
@@ -1054,7 +1055,7 @@ def install_python_deps():
         "future": ">=0.15.2",
         "pyparsing": ">=2.0.3,<2.4.0",
         "kconfiglib": "==13.7.1",
-        "idf-component-manager": "~=1.0"
+        "idf-component-manager": "~=1.0",
     }
 
     installed_packages = _get_installed_pip_packages()
@@ -1083,14 +1084,22 @@ def install_python_deps():
             )
         )
 
-    # a special "esp-windows-curses" python package is required on Windows for Menuconfig
-    if "windows" in get_systype():
-        import pkg_resources
+    if "windows" in get_systype() and "windows-curses" not in installed_packages:
+        env.Execute(
+            env.VerboseAction(
+                "$PYTHONEXE -m pip install windows-curses",
+                "Installing windows-curses package",
+            )
+        )
 
-        if "esp-windows-curses" not in {pkg.key for pkg in pkg_resources.working_set}:
+        # A special "esp-windows-curses" python package is required on Windows
+        # for Menuconfig on IDF <5
+        if "esp-windows-curses" not in {
+            pkg.key for pkg in pkg_resources.working_set
+        }:
             env.Execute(
                 env.VerboseAction(
-                    '$PYTHONEXE -m pip install "file://%s/tools/kconfig_new/esp-windows-curses" windows-curses'
+                    '$PYTHONEXE -m pip install "file://%s/tools/kconfig_new/esp-windows-curses"'
                     % FRAMEWORK_DIR,
                     "Installing windows-curses package",
                 )
@@ -1483,4 +1492,6 @@ env.Replace(
 )
 
 # Propagate application offset to debug configurations
-env["INTEGRATION_EXTRA_DATA"].update({"application_offset": env.subst("$ESP32_APP_OFFSET")})
+env["INTEGRATION_EXTRA_DATA"].update(
+    {"application_offset": env.subst("$ESP32_APP_OFFSET")}
+)
