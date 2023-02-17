@@ -53,7 +53,6 @@
     "framework-espidf": {
       "type": "framework",
       "optional": true,
-      "owner": "tasmota",
       "version": "https://github.com/tasmota/esp-idf/releases/download/v5.0.1/esp-idf-v5.0.1.zip",
       "optionalVersions": "https://github.com/tasmota/esp-idf/releases/download/v4.4.3.20230129/esp-idf-v4.4.3.zip"
     },
