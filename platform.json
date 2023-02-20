@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2023.01.01",
+  "version": "2023.02.00",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -54,7 +54,7 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v4.4.3.20230129/esp-idf-v4.4.3.zip"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v4.4.4/esp-idf-v4.4.4.zip"
     },
     "toolchain-xtensa-esp32": {
       "type": "toolchain",
