@@ -36,19 +36,19 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/1266/framework-arduinoespressif32-lwip_timeout-ed6742e7f0.zip"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/1271/framework-arduinoespressif32-lwip_timeout-ed6742e7f0.zip"
     },
      "framework-arduino-solo1": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/1241/framework-arduinoespressif32-solo1-release_v4.4-f1b808c0aa.zip"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/1273/framework-arduinoespressif32-solo1-release_v4.4-804d12ce82.zip"
     },
      "framework-arduino-ITEAD": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/1240/framework-arduinoespressif32-ITEAD-release_v4.4-f1b808c0aa.zip"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/1272/framework-arduinoespressif32-ITEAD-release_v4.4-804d12ce82.zip"
     },
     "framework-espidf": {
       "type": "framework",
