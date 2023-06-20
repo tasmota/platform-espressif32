@@ -68,7 +68,7 @@ class Espressif32Platform(PlatformBase):
 
             if "arduino" in frameworks:
                 # Downgrade the IDF version for mixed Arduino+IDF projects
-                self.packages["framework-espidf"]["version"] = "https://github.com/tasmota/esp-idf/releases/download/v4.4.4/esp-idf-v4.4.4.zip"
+                self.packages["framework-espidf"]["version"] = "https://github.com/tasmota/esp-idf/releases/download/v4.4.5.20230614/esp-idf-v4.4.5.zip"
             else:
                 # Use the latest toolchains available for IDF v5.0
                 for target in (
