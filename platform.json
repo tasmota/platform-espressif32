@@ -51,7 +51,7 @@
       "type": "framework",
       "optional": true,
       "owner": "platformio",
-      "version": "~3.50002.0",
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.0.2/esp-idf-v5.0.2.zip",
       "optionalVersions": "https://github.com/tasmota/esp-idf/releases/download/v4.4.5.20230614/esp-idf-v4.4.5.zip"
     },
     "toolchain-xtensa-esp32": {
