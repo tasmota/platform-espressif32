@@ -521,6 +521,12 @@ env.AddPlatformTarget(
 )
 
 #
+# Override memory inspection behavior
+#
+
+env.SConscript("sizedata.py", exports="env")
+
+#
 # Default targets
 #
 
