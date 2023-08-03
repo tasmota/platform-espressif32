@@ -150,21 +150,41 @@ def _parse_partitions(env):
     return result
 
 
-def _update_max_upload_size(env):
-    if not env.get("PARTITIONS_TABLE_CSV"):
+def _parse_partitions(env):
+    partitions_csv = env.subst("$PARTITIONS_TABLE_CSV")
+    if not isfile(partitions_csv):
+        sys.stderr.write("Could not find the file %s with partitions "
+                         "table.\n" % partitions_csv)
+        env.Exit(1)
         return
-    sizes = {
-        p["subtype"]: _parse_size(p["size"]) for p in _parse_partitions(env)
-        if p["type"] in ("0", "app")
-    }
 
-    # One of the `factory` or `ota_0` partitions is used to determine available memory
-    # size. If both partitions are set, then the `factory` partition is used by default
-    # https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/partition-tables.html#subtype
-    max_upload_size = sizes.get("factory", sizes.get("ota_0", 0))
-    if max_upload_size:
-        board.update("upload.maximum_size", max_upload_size)
+    result = []
+    next_offset = 0
+    with open(partitions_csv) as fp:
+        for line in fp.readlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            tokens = [t.strip() for t in line.split(",")]
+            if len(tokens) < 5:
+                continue
+            partition = {
+                "name": tokens[0],
+                "type": tokens[1],
+                "subtype": tokens[2],
+                "offset": tokens[3] or next_offset,
+                "size": tokens[4],
+                "flags": tokens[5] if len(tokens) > 5 else None
+            }
+            result.append(partition)
+            next_offset = _parse_size(partition["offset"]) + _parse_size(
+                partition["size"]
+            )
 
+            bound = 0x10000 if partition["type"] in ("0", "app") else 4
+            next_offset = (next_offset + bound - 1) & ~(bound - 1)
+
+    return result
 
 def _to_unix_slashes(path):
     return path.replace("\\", "/")
