@@ -169,34 +169,6 @@ def _update_max_upload_size(env):
             break
 
 
-    result = []
-    next_offset = 0
-    with open(partitions_csv) as fp:
-        for line in fp.readlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            tokens = [t.strip() for t in line.split(",")]
-            if len(tokens) < 5:
-                continue
-            partition = {
-                "name": tokens[0],
-                "type": tokens[1],
-                "subtype": tokens[2],
-                "offset": tokens[3] or next_offset,
-                "size": tokens[4],
-                "flags": tokens[5] if len(tokens) > 5 else None
-            }
-            result.append(partition)
-            next_offset = _parse_size(partition["offset"]) + _parse_size(
-                partition["size"]
-            )
-
-            bound = 0x10000 if partition["type"] in ("0", "app") else 4
-            next_offset = (next_offset + bound - 1) & ~(bound - 1)
-
-    return result
-
 def _to_unix_slashes(path):
     return path.replace("\\", "/")
 
