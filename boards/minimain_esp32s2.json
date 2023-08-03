@@ -7,6 +7,8 @@
     "core": "esp32",
     "extra_flags": [
       "-DARDUINO_DEPARTMENT_OF_ALCHEMY_MINIMAIN_ESP32S2",
+      "-DARDUINO_RUNNING_CORE=1",
+      "-DARDUINO_EVENT_RUNNING_CORE=1",
       "-DBOARD_HAS_PSRAM",
       "-DARDUINO_USB_MODE=1",
       "-DARDUINO_USB_CDC_ON_BOOT=1"

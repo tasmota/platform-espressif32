@@ -2,14 +2,18 @@
   "build": {
     "arduino":{
       "ldscript": "esp32s3_out.ld",
-      "partitions": "default_16MB.csv",
-      "memory_type": "qio_qspi"
+      "partitions": "app3M_fat9M_fact512k_16MB.csv",
+      "memory_type": "qio_opi"
     },
     "core": "esp32",
     "extra_flags": [
-      "-DARDUINO_FEATHERS3",
+      "-DARDUINO_NANO_ESP32",
+      "-DBOARD_HAS_PIN_REMAP",
       "-DBOARD_HAS_PSRAM",
+      "-DUSB_MANUFACTURER=\\\"Arduino\\\"",
+      "-DUSB_PRODUCT=\\\"NanoESP32\\\"",
       "-DARDUINO_USB_CDC_ON_BOOT=1",
+      "-DARDUINO_USB_DFU_ON_BOOT=1",
       "-DARDUINO_RUNNING_CORE=1",
       "-DARDUINO_EVENT_RUNNING_CORE=1"
     ],
@@ -18,12 +22,12 @@
     "flash_mode": "qio",
     "hwids": [
       [
-        "0X303A",
-        "0x80D0"
+        "0x2341",
+        "0x0070"
       ]
     ],
     "mcu": "esp32s3",
-    "variant": "um_feathers3"
+    "variant": "arduino_nano_nora"
   },
   "connectivity": [
     "wifi"
@@ -35,16 +39,15 @@
     "arduino",
     "espidf"
   ],
-  "name": "Unexpected Maker FeatherS3",
+  "name": "Arduino Nano ESP32",
   "upload": {
     "flash_size": "16MB",
     "maximum_ram_size": 327680,
     "maximum_size": 16777216,
-    "use_1200bps_touch": true,
-    "wait_for_upload_port": true,
     "require_upload_port": true,
-    "speed": 460800
+    "speed": 460800,
+    "protocol": "dfu"
   },
-  "url": "https://unexpectedmaker.com/shop/feathers3",
-  "vendor": "Unexpected Maker"
+  "url": "https://docs.arduino.cc/hardware/nano-esp32",
+  "vendor": "Arduino"
 }

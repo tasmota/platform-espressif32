@@ -1,14 +1,15 @@
 {
   "build": {
-    "arduino":{
+    "arduino": {
       "ldscript": "esp32s3_out.ld",
-      "memory_type": "qio_opi"
+      "partitions": "default_8MB.csv"
     },
     "core": "esp32",
     "extra_flags": [
-      "-DBOARD_HAS_PSRAM",
-      "-DARDUINO_ESP32S3_CAM_LCD",
-      "-DARDUINO_USB_MODE=1"
+      "-DARDUINO_heltec_wifi_lora_32_V3",
+      "-DARDUINO_USB_MODE=1",
+      "-DARDUINO_RUNNING_CORE=1",
+      "-DARDUINO_EVENT_RUNNING_CORE=1"
     ],
     "f_cpu": "240000000L",
     "f_flash": "80000000L",
@@ -20,11 +21,12 @@
       ]
     ],
     "mcu": "esp32s3",
-    "variant": "esp32s3"
+    "variant": "heltec_wifi_lora_32_V3"
   },
   "connectivity": [
     "wifi",
-    "bluetooth"
+    "bluetooth",
+    "lora"
   ],
   "debug": {
     "openocd_target": "esp32s3.cfg"
@@ -33,15 +35,14 @@
     "arduino",
     "espidf"
   ],
-  "name": "LilyGo T-SIMCAM ESP32-S3 16M QIO Flash 8MB OPI PSRAM",
+  "name": "Heltec WiFi LoRa 32 (V3)",
   "upload": {
-    "flash_size": "16MB",
+    "flash_size": "8MB",
     "maximum_ram_size": 327680,
-    "maximum_size": 16777216,
+    "maximum_size": 8388608,
     "require_upload_port": true,
-    "before_reset": "usb_reset",
     "speed": 460800
   },
-  "url": "https://github.com/Xinyuan-LilyGO/LilyGo-Camera-Series",
-  "vendor": "LilyGo"
+  "url": "https://heltec.org/project/wifi-lora-32-v3/",
+  "vendor": "Heltec"
 }

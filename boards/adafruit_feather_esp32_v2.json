@@ -7,6 +7,8 @@
     "extra_flags": [
       "-DARDUINO_ADAFRUIT_FEATHER_ESP32_V2",
       "-DBOARD_HAS_PSRAM",
+      "-DARDUINO_RUNNING_CORE=1",
+      "-DARDUINO_EVENT_RUNNING_CORE=1",
       "-mfix-esp32-psram-cache-issue",
       "-mfix-esp32-psram-cache-strategy=memw"
     ],
