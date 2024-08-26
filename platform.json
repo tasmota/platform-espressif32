@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2024.08.10",
+  "version": "2024.08.11",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,25 +33,25 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/2827/framework-arduinoespressif32-all-release_v5.1-147836c.zip"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/3.0.4.240826/framework-arduinoespressif32.zip"
     },
      "framework-arduino-solo1": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/2821/framework-arduinoespressif32-solo1-release_v5.1-147836c.zip"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/3.0.4.240826/framework-arduinoespressif32-solo1.zip"
     },
      "framework-arduino-ITEAD": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/2822/framework-arduinoespressif32-ITEAD-esp32-release_v5.1-147836c.zip"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/3.0.4.240826/framework-arduinoespressif32-ITEAD.zip"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.1.4.240801/esp-idf-v5.1.4.zip"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.1.4.240822/esp-idf-v5.1.4.zip"
     },
     "toolchain-xtensa-esp32": {
       "type": "toolchain",
@@ -98,7 +98,7 @@
     "tool-esptoolpy": {
       "type": "uploader",
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esptool/releases/download/v4.7.6/esptool.zip"
+      "version": "https://github.com/tasmota/esptool/releases/download/v4.7.6/esptool.zip"
     },
     "tool-dfuutil-arduino": {
       "type": "uploader",
