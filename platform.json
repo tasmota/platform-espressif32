@@ -116,15 +116,15 @@
       "owner": "platformio",
       "version": "~3.21.0"
     },
-    "tool-ninja": {
-      "optional": true,
-      "owner": "platformio",
-      "version": "^1.7.0"
-    },
     "tool-scons": {
       "optional": true,
       "owner": "platformio",
       "version": "~4.40801.0"
+    },
+    "tool-ninja": {
+      "optional": true,
+      "owner": "platformio",
+      "version": "^1.7.0"
     }
   }
 }
