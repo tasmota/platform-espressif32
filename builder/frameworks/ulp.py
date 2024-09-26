@@ -36,7 +36,7 @@ def prepare_ulp_env_vars(env):
     ulp_env.PrependENVPath("IDF_PATH", FRAMEWORK_DIR)
 
     toolchain_path = platform.get_package_dir(
-        "toolchain-xtensa-%s" % idf_variant
+        "toolchain-xtensa-esp-elf"
         if idf_variant not in ("esp32c6", "esp32p4")
         else "toolchain-riscv32-esp"
     )
@@ -116,8 +116,7 @@ def generate_ulp_config(target_config):
             "-DIDF_PATH=" + fs.to_unix_path(FRAMEWORK_DIR),
             "-DSDKCONFIG_HEADER=" + os.path.join(BUILD_DIR, "config", "sdkconfig.h"),
             "-DPYTHON=" + env.subst("$PYTHONEXE"),
-            "-DULP_COCPU_IS_RISCV=%s" % ("ON" if riscv_ulp_enabled else "OFF"),
-            "-DULP_COCPU_IS_LP_CORE=%s" % ("ON" if lp_core_ulp_enabled else "OFF"),
+            "-DSDKCONFIG_CMAKE=" + os.path.join(BUILD_DIR, "config", "sdkconfig.cmake"),
             "-GNinja",
             "-B",
             ULP_BUILD_DIR,

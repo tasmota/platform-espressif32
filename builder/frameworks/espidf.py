@@ -69,7 +69,9 @@ IDF5 = (
 IDF_ENV_VERSION = "1.0.0"
 FRAMEWORK_DIR = platform.get_package_dir("framework-espidf")
 TOOLCHAIN_DIR = platform.get_package_dir(
-    "toolchain-%s" % ("riscv32-esp" if mcu in ("esp32c2", "esp32c3", "esp32c6", "esp32h2") else ("xtensa-%s" % mcu))
+    "toolchain-xtensa-esp-elf"
+    if mcu in ("esp32", "esp32s2", "esp32s3")
+    else "toolchain-riscv32-esp"
 )
 
 
@@ -249,12 +251,6 @@ def populate_idf_env_vars(idf_env):
         os.path.join(platform.get_package_dir("tool-cmake"), "bin"),
         os.path.dirname(get_python_exe()),
     ]
-
-#    if mcu in ("esp32", "esp32s2", "esp32s3"):
-#        additional_packages.append(
-#            os.path.join(platform.get_package_dir("toolchain-esp32ulp"), "bin"),
-#        )
-
 
     idf_env["PATH"] = os.pathsep.join(additional_packages + [idf_env["PATH"]])
 
@@ -507,7 +503,7 @@ def extract_linker_script_fragments_backup(framework_components_dir, sdk_config)
         sys.stderr.write("Error: Failed to extract paths to linker script fragments\n")
         env.Exit(1)
 
-    if mcu in ("esp32c2", "esp32c3", "esp32c6", "esp32h2", "esp32p4"):
+    if mcu not in ("esp32", "esp32s2", "esp32s3"):
         result.append(os.path.join(framework_components_dir, "riscv", "linker.lf"))
 
     # Add extra linker fragments
@@ -1662,7 +1658,7 @@ env.Prepend(
         (
             board.get(
                 "upload.bootloader_offset",
-                "0x0" if mcu in ["esp32c2", "esp32c3", "esp32c6", "esp32s3", "esp32h2"] else ("0x2000" if mcu in ["esp32p4"] else "0x1000"),
+                "0x1000" if mcu in ["esp32", "esp32s2"] else ("0x2000" if mcu in ["esp32p4"] else "0x0"),
             ),
             os.path.join("$BUILD_DIR", "bootloader.bin"),
         ),
@@ -1802,17 +1798,54 @@ if ota_partition_params["size"] and ota_partition_params["offset"]:
         ]
     )
 
+def _parse_size(value):
+    if isinstance(value, int):
+        return value
+    elif value.isdigit():
+        return int(value)
+    elif value.startswith("0x"):
+        return int(value, 16)
+    elif value[-1].upper() in ("K", "M"):
+        base = 1024 if value[-1].upper() == "K" else 1024 * 1024
+        return int(value[:-1]) * base
+    return value
+
 #
 # Configure application partition offset
 #
 
-env.Replace(
-    ESP32_APP_OFFSET=get_app_partition_offset(
-        env.subst("$PARTITIONS_TABLE_CSV"), partition_table_offset
-    )
-)
+partitions_csv = env.subst("$PARTITIONS_TABLE_CSV")
+result = []
+next_offset = 0
+bound = int(board.get("upload.offset_address", "0x10000"), 16) # default 0x10000
+with open(partitions_csv) as fp:
+    for line in fp.readlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        tokens = [t.strip() for t in line.split(",")]
+        if len(tokens) < 5:
+            continue
+        partition = {
+            "name": tokens[0],
+            "type": tokens[1],
+            "subtype": tokens[2],
+            "offset": tokens[3] or next_offset,
+            "size": tokens[4],
+            "flags": tokens[5] if len(tokens) > 5 else None
+        }
+        result.append(partition)
+        next_offset = _parse_size(partition["offset"])
+        if (partition["subtype"] == "ota_0"):
+            bound = next_offset
+        next_offset = (next_offset + bound - 1) & ~(bound - 1)
 
+env.Replace(ESP32_APP_OFFSET=str(hex(bound)))
+
+#
 # Propagate application offset to debug configurations
+#
+
 env["INTEGRATION_EXTRA_DATA"].update(
     {"application_offset": env.subst("$ESP32_APP_OFFSET")}
 )
