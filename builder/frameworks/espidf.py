@@ -80,7 +80,6 @@ TOOLCHAIN_DIR = platform.get_package_dir(
 assert os.path.isdir(FRAMEWORK_DIR)
 assert os.path.isdir(TOOLCHAIN_DIR)
 
-# The latest IDF uses a standalone GDB package which requires at least PlatformIO 6.1.11
 if (
     ["espidf"] == env.get("PIOFRAMEWORK")
     and semantic_version.Version.coerce(__version__)
@@ -89,7 +88,7 @@ if (
 ):
     print("Warning! Debugging an IDF project requires PlatformIO Core >= 6.1.11!")
 
-# Arduino framework as a component is not compatible with ESP-IDF >5.2
+# Arduino framework as a component is not compatible with ESP-IDF >5.3
 if "arduino" in env.subst("$PIOFRAMEWORK"):
     ARDUINO_FRAMEWORK_DIR = platform.get_package_dir("framework-arduinoespressif32") # todo Tasmota ?
     # Possible package names in 'package@version' format is not compatible with CMake
@@ -125,7 +124,7 @@ def HandleArduinoIDFsettings(env):
         return hashlib.md5((phrase).encode('utf-8')).hexdigest()[:16]
 
     if flag_custom_sdkonfig == True:
-        print("*** Add \"custom_sdkconfig\" settings to IDF sdkconfig.defaults! ***")
+        print("*** Add \"custom_sdkconfig\" settings to IDF sdkconfig.defaults ***")
         idf_config_flags = env.GetProjectOption("custom_sdkconfig").splitlines()
         sdkconfig_src = join(ARDUINO_FRAMEWORK_DIR,"tools","esp32-arduino-libs",mcu,"sdkconfig")
 
@@ -143,16 +142,15 @@ def HandleArduinoIDFsettings(env):
             dst.write("# TASMOTA__"+ get_MD5_hash(env.GetProjectOption("custom_sdkconfig").strip() + mcu) +"\n")
             while line := src.readline():
                 flag = get_flag(line)
-                # print(flag)
                 if flag is None:
                     dst.write(line)
                 else:
                     no_match = True
                     for item in idf_config_flags:
                         if flag in item:
-                            dst.write(item+"\n")
+                            dst.write(item.replace("\'", "")+"\n")
                             no_match = False
-                            print("Replace:", line, "with:", item)
+                            print("Replace:",line,"with:",item.replace("\'", ""))
                     if no_match:
                         dst.write(line)
             dst.close()
@@ -174,9 +172,6 @@ if flag_custom_sdkonfig:
         PIOFRAMEWORK="arduino",
         ARDUINO_LIB_COMPILE_FLAG="Build",
     )
-#    env.Append(
-#        BUILD_FLAGS="-mtext-section-literals" if mcu in ("esp32", "esp32s2", "esp32s3") else ""
-#    )
     env["INTEGRATION_EXTRA_DATA"].update({"arduino_lib_compile_flag": env.subst("$ARDUINO_LIB_COMPILE_FLAG")})
 
 def get_project_lib_includes(env):
