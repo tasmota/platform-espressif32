@@ -75,7 +75,6 @@ def matching_custom_sdkconfig():
         return matching_sdkconfig, cust_sdk_is_present
     if os.path.exists(last_sdkconfig_path) == False:
         return matching_sdkconfig, cust_sdk_is_present
-    print(last_sdkconfig_path)
     if flag_custom_sdkconfig == False:
         matching_sdkconfig = False
         return matching_sdkconfig, cust_sdk_is_present
@@ -84,10 +83,8 @@ def matching_custom_sdkconfig():
         if line.startswith("# TASMOTA__"):
             cust_sdk_is_present = True;
             costum_options = env.GetProjectOption("custom_sdkconfig")
-            print(costum_options)
             if (line.split("__")[1]).strip() == get_MD5_hash((costum_options).strip() + mcu):
                 matching_sdkconfig = True
-                # print(line.split("__")[1], get_MD5_hash(costum_options))
 
     return matching_sdkconfig, cust_sdk_is_present
 
@@ -97,17 +94,12 @@ def check_reinstall_frwrk():
     matching_sdkconfig = False
     if flag_custom_sdkconfig:
         matching_sdkconfig, cust_sdk_is_present = matching_custom_sdkconfig()
-    print("*** Custom sdkconfig in config", flag_custom_sdkconfig)
-    print("*** Any Custom sdkconfig is present", flag_any_custom_sdkconfig)
-    print("*** Custom sdkconfig is present", cust_sdk_is_present)
-    print("*** sdkconfig is matching", matching_sdkconfig)
     if flag_custom_sdkconfig == False and flag_any_custom_sdkconfig == True:
         # case custom sdkconfig exists and a env without "custom_sdkconfig"
         framework_reinstall = True
     if flag_custom_sdkconfig == True  and matching_sdkconfig == False:
         # check if current custom sdkconfig is different from existing
         framework_reinstall = True
-    print("Framework Reinstall is", framework_reinstall)
     return framework_reinstall
 
 def call_compile_libs():
