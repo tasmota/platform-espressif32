@@ -21,7 +21,7 @@ Espressif Systems is a privately held fabless semiconductor company. They provid
 Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3, ESP32-H2 and ESP32-P4
 ```                  
 [platformio]
-platform = https://github.com/tasmota/platform-espressif32/releases/download/2024.09.31/platform-espressif32.zip
+platform = https://github.com/tasmota/platform-espressif32/releases/download/2024.10.30/platform-espressif32.zip
 framework = arduino
 ```
 ## Hybrid compile: Build customized Arduino IDF libraries
