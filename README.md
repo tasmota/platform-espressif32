@@ -15,26 +15,14 @@ Espressif Systems is a privately held fabless semiconductor company. They provid
 1. [Install PlatformIO](http://platformio.org)
 2. Create PlatformIO project and configure a platform option in [platformio.ini](http://docs.platformio.org/page/projectconf.html) file:
 
-# Usage
-
-## Tasmota release Arduino 3.1.0.241015 and IDF 5.3.1+
-Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3, ESP32-H2 and ESP32-P4
+### Development build Arduino 3.1.0+ and IDF 5.3.1+ (build from development branches)
+Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3 and ESP32-H2
 ```                  
 [platformio]
-platform = https://github.com/tasmota/platform-espressif32/releases/download/2024.10.30/platform-espressif32.zip
+platform = https://github.com/tasmota/platform-espressif32/releases/download/2024.10.31/platform-espressif32.zip
 framework = arduino
 ```
-## Hybrid compile: Build customized Arduino IDF libraries
-Adding the new option `custom_sdkconfig` in an `[env]` will compile the Arduino libraries using the sdkconfig settings
-from the framework and adds the changes specified in `custom_sdkconfig`. After the compile run the Arduino project `[env]` is
-compiled with the customized libraries.
 
-Example: Switching off PPP modem support only for `[env:esp32-no-PPP]`
-```
-[env:esp32-no-PPP]
-board = esp32dev
-custom_sdkconfig = '# CONFIG_LWIP_PPP_SUPPORT is not set'
-```
 ## ESP32 Arduino framework
 
 Example:
