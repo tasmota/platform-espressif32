@@ -12,7 +12,7 @@
     "RISC-V"
   ],
   "engines": {
-    "platformio": ">=6.1.15"
+    "platformio": ">=6.1.16"
   },
   "repository": {
     "type": "git",
@@ -33,25 +33,25 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.0.241015/framework-arduinoespressif32.zip"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/3099/framework-arduinoespressif32-all-release_v5.3-4c885a26.zip"
     },
      "framework-arduino-solo1": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.0.241015/framework-arduinoespressif32-solo1.zip"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/3100/framework-arduinoespressif32-solo1-release_v5.3-4c885a26.zip"
     },
      "framework-arduino-ITEAD": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.0.241015/framework-arduinoespressif32-ITEAD.zip"
+      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/3101/framework-arduinoespressif32-ITEAD-esp32-release_v5.3-4c885a26.zip"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "Jason2866",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.1.240926/esp-idf-v5.3.1.zip"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.1.241016/esp-idf-v5.3.1.zip"
     },
     "toolchain-xtensa-esp-elf": {
       "type": "toolchain",
@@ -86,7 +86,7 @@
     "tool-esptoolpy": {
       "type": "uploader",
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esptool/releases/download/v4.8.0/esptool.zip"
+      "version": "https://github.com/Jason2866/esptool/releases/download/v4.8.1.1/esptool.zip"
     },
     "tool-dfuutil-arduino": {
       "type": "uploader",
