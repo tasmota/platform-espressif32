@@ -2165,6 +2165,79 @@ if "espidf" in env.get("PIOFRAMEWORK") and (flag_custom_component_add == True or
                     print("*** \"idf_component.yml\" couldnt be removed ***")
     env.AddPostAction("checkprogsize", idf_custom_component)
 #
+# Compile Arduino IDF sources
+#
+
+if "arduino" in env.get("PIOFRAMEWORK") and "espidf" not in env.get("PIOFRAMEWORK"):
+    def idf_lib_copy(source, target, env):
+        env_build = join(env["PROJECT_BUILD_DIR"],env["PIOENV"])
+        sdkconfig_h_path = join(env_build,"config","sdkconfig.h")
+        arduino_libs = join(ARDUINO_FRAMEWORK_DIR,"tools","esp32-arduino-libs")
+        lib_src = join(env_build,"esp-idf")
+        lib_dst = join(arduino_libs,mcu,"lib")
+        ld_dst = join(arduino_libs,mcu,"ld")
+        mem_var = join(arduino_libs,mcu,board.get("build.arduino.memory_type", (board.get("build.flash_mode", "dio") + "_qspi")))
+        src = [join(lib_src,x) for x in os.listdir(lib_src)]
+        src = [folder for folder in src if not os.path.isfile(folder)] # folders only
+        for folder in src:
+            files = [join(folder,x) for x in os.listdir(folder)]
+            for file in files:
+                if file.strip().endswith(".a"):
+                    shutil.copyfile(file,join(lib_dst,file.split(os.path.sep)[-1]))
+
+        shutil.move(join(lib_dst,"libspi_flash.a"),join(mem_var,"libspi_flash.a"))
+        shutil.move(join(env_build,"memory.ld"),join(ld_dst,"memory.ld"))
+        if mcu == "esp32s3":
+            shutil.move(join(lib_dst,"libesp_psram.a"),join(mem_var,"libesp_psram.a"))
+            shutil.move(join(lib_dst,"libesp_system.a"),join(mem_var,"libesp_system.a"))
+            shutil.move(join(lib_dst,"libfreertos.a"),join(mem_var,"libfreertos.a"))
+            shutil.move(join(lib_dst,"libbootloader_support.a"),join(mem_var,"libbootloader_support.a"))
+            shutil.move(join(lib_dst,"libesp_hw_support.a"),join(mem_var,"libesp_hw_support.a"))
+            shutil.move(join(lib_dst,"libesp_lcd.a"),join(mem_var,"libesp_lcd.a"))
+
+        shutil.copyfile(sdkconfig_h_path,join(mem_var,"include","sdkconfig.h"))
+        if not bool(os.path.isfile(join(arduino_libs,mcu,"sdkconfig.orig"))):
+            shutil.move(join(arduino_libs,mcu,"sdkconfig"),join(arduino_libs,mcu,"sdkconfig.orig"))
+        shutil.copyfile(join(env.subst("$PROJECT_DIR"),"sdkconfig."+env["PIOENV"]),join(arduino_libs,mcu,"sdkconfig"))
+        shutil.copyfile(join(env.subst("$PROJECT_DIR"),"sdkconfig."+env["PIOENV"]),join(arduino_libs,"sdkconfig"))
+        print("*** Copied compiled %s IDF libraries to Arduino framework ***" % idf_variant)
+
+        pio_exe_path = shutil.which("platformio"+(".exe" if IS_WINDOWS else ""))
+        pio_cmd = env["PIOENV"]
+        env.Execute(
+            env.VerboseAction(
+                (
+                    '"%s" run -e ' % pio_exe_path
+                    + " ".join(['"%s"' % pio_cmd])
+                ),
+                "*** Starting Arduino compile %s with custom libraries ***" % pio_cmd,
+            )
+        )
+        if flag_custom_component_add == True or flag_custom_component_remove == True:
+            try:
+                shutil.copy(join(ARDUINO_FRAMEWORK_DIR,"idf_component.yml.orig"),join(ARDUINO_FRAMEWORK_DIR,"idf_component.yml"))
+                print("*** Original Arduino \"idf_component.yml\" restored ***")
+            except:
+                print("*** Original Arduino \"idf_component.yml\" couldnt be restored ***")
+    env.AddPostAction("checkprogsize", idf_lib_copy)
+
+if "espidf" in env.get("PIOFRAMEWORK") and (flag_custom_component_add == True or flag_custom_component_remove == True):
+    def idf_custom_component(source, target, env):
+        try:
+            shutil.copy(join(ARDUINO_FRAMEWORK_DIR,"idf_component.yml.orig"),join(ARDUINO_FRAMEWORK_DIR,"idf_component.yml"))
+            print("*** Original Arduino \"idf_component.yml\" restored ***")
+        except:
+            try:
+                shutil.copy(join(PROJECT_SRC_DIR,"idf_component.yml.orig"),join(PROJECT_SRC_DIR,"idf_component.yml"))
+                print("*** Original \"idf_component.yml\" restored ***")
+            except: # no "idf_component.yml" in source folder
+                try:
+                    os.remove(join(PROJECT_SRC_DIR,"idf_component.yml"))
+                    print("*** pioarduino generated \"idf_component.yml\" removed ***")
+                except:
+                    print("*** \"idf_component.yml\" couldnt be removed ***")
+    env.AddPostAction("checkprogsize", idf_custom_component)
+#
 # Process OTA partition and image
 #
 
