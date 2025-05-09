@@ -132,7 +132,7 @@ def _parse_partitions(env):
 
     result = []
     next_offset = 0
-    app_offset = int(board.get("upload.offset_address", "0x10000"), 16) # default 0x10000
+    app_offset = 0x10000
     with open(partitions_csv) as fp:
         for line in fp.readlines():
             line = line.strip()
@@ -235,7 +235,7 @@ board = env.BoardConfig()
 mcu = board.get("build.mcu", "esp32")
 toolchain_arch = "xtensa-%s" % mcu
 filesystem = board.get("build.filesystem", "littlefs")
-if mcu in ("esp32c2", "esp32c3", "esp32c6", "esp32h2", "esp32p4"):
+if mcu in ("esp32c2", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4"):
     toolchain_arch = "riscv32-esp"
 
 if "INTEGRATION_EXTRA_DATA" not in env:
@@ -256,7 +256,7 @@ env.Replace(
     GDB=join(
         platform.get_package_dir(
             "tool-riscv32-esp-elf-gdb"
-            if mcu in ("esp32c2", "esp32c3", "esp32c6", "esp32h2", "esp32p4")
+            if mcu in ("esp32c2", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4")
             else "tool-xtensa-esp-elf-gdb"
         )
         or "",
@@ -293,6 +293,21 @@ env.Replace(
 
     PROGSUFFIX=".elf"
 )
+
+# Check if lib_archive is set in platformio.ini and set it to False
+# if not found. This makes weak defs in framework and libs possible.
+def check_lib_archive_exists():
+    for section in config.sections():
+        if "lib_archive" in config.options(section):
+            #print(f"lib_archive in [{section}] found with value: {config.get(section, 'lib_archive')}")
+            return True
+    #print("lib_archive was not found in platformio.ini")
+    return False
+
+if not check_lib_archive_exists():
+    env_section = "env:" + env["PIOENV"]
+    config.set(env_section, "lib_archive", "False")
+    #print(f"lib_archive is set to False in [{env_section}]")
 
 # Allow user to override via pre:script
 if env.get("PROGNAME", "program") == "program":
@@ -465,28 +480,6 @@ elif upload_protocol == "esptool":
         env.VerboseAction(BeforeUpload, "Looking for upload port..."),
         env.VerboseAction("$UPLOADCMD", "Uploading $SOURCE")
     ]
-
-elif upload_protocol == "dfu":
-
-    hwids = board.get("build.hwids", [["0x2341", "0x0070"]])
-    vid = hwids[0][0]
-    pid = hwids[0][1]
-
-    upload_actions = [env.VerboseAction("$UPLOADCMD", "Uploading $SOURCE")]
-
-    env.Replace(
-        UPLOADER=join(
-            platform.get_package_dir("tool-dfuutil-arduino") or "", "dfu-util"
-        ),
-        UPLOADERFLAGS=[
-            "-d",
-            ",".join(["%s:%s" % (hwid[0], hwid[1]) for hwid in hwids]),
-            "-Q",
-            "-D"
-        ],
-        UPLOADCMD='"$UPLOADER" $UPLOADERFLAGS "$SOURCE"',
-    )
-
 
 elif upload_protocol in debug_tools:
     _parse_partitions(env)

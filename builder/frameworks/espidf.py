@@ -115,9 +115,6 @@ def install_standard_python_deps():
 
 install_standard_python_deps()
 
-# Allow changes in folders of managed components
-os.environ["IDF_COMPONENT_OVERWRITE_MANAGED_COMPONENTS"] = "1"
-
 platform = env.PioPlatform()
 config = env.GetProjectConfig()
 board = env.BoardConfig()
@@ -129,6 +126,9 @@ idf_variant = mcu.lower()
 flag_custom_sdkonfig = False
 flag_custom_component_add = False
 flag_custom_component_remove = False
+
+# Allow changes in folders of managed components
+os.environ["IDF_COMPONENT_OVERWRITE_MANAGED_COMPONENTS"] = "1"
 
 IDF5 = (
     platform.get_package_version("framework-espidf")
@@ -364,7 +364,7 @@ def HandleCOMPONENTsettings(env):
 if flag_custom_component_add == True or flag_custom_component_remove == True:
     HandleCOMPONENTsettings(env)
 
-if flag_custom_sdkonfig == True and "arduino" in env.subst("$PIOFRAMEWORK"):
+if flag_custom_sdkonfig == True and "arduino" in env.subst("$PIOFRAMEWORK") and "espidf" not in env.subst("$PIOFRAMEWORK"):
     HandleArduinoIDFsettings(env)
     LIB_SOURCE = os.path.join(ProjectConfig.get_instance().get("platformio", "platforms_dir"), "espressif32", "builder", "build_lib")
     if not bool(os.path.exists(os.path.join(PROJECT_DIR, ".dummy"))):
@@ -535,6 +535,7 @@ def populate_idf_env_vars(idf_env):
     if "IDF_TOOLS_PATH" in idf_env:
         del idf_env["IDF_TOOLS_PATH"]
 
+    idf_env["ESP_ROM_ELF_DIR"] = platform.get_package_dir("tool-esp-rom-elfs")
 
 def get_target_config(project_configs, target_index, cmake_api_reply_dir):
     target_json = project_configs.get("targets")[target_index].get("jsonFile", "")
@@ -1530,11 +1531,10 @@ def install_python_deps():
         # https://github.com/platformio/platformio-core/issues/4614
         "urllib3": "<2",
         # https://github.com/platformio/platform-espressif32/issues/635
-        "cryptography": "~=41.0.1",
-        "future": ">=0.18.3",
+        "cryptography": "~=44.0.0",
         "pyparsing": ">=3.1.0,<4",
         "idf-component-manager": "~=2.0.1",
-        "esp-idf-kconfig": ">=2.5.0"
+        "esp-idf-kconfig": "~=2.5.0"
     }
 
     if sys_platform.system() == "Darwin" and "arm" in sys_platform.machine().lower():
@@ -1972,7 +1972,7 @@ env.Prepend(
         (
             board.get(
                 "upload.bootloader_offset",
-                "0x1000" if mcu in ["esp32", "esp32s2"] else ("0x2000" if mcu in ["esp32p4"] else "0x0"),
+                "0x1000" if mcu in ["esp32", "esp32s2"] else ("0x2000" if mcu in ["esp32c5", "esp32p4"] else "0x0"),
             ),
             os.path.join("$BUILD_DIR", "bootloader.bin"),
         ),
@@ -2062,6 +2062,15 @@ extra_elf2bin_flags = "--elf-sha256-offset 0xb0"
 # For chips that support configurable MMU page size feature
 # If page size is configured to values other than the default "64KB" in menuconfig,
 mmu_page_size = "64KB"
+if sdk_config.get("MMU_PAGE_SIZE_8KB", False):
+    mmu_page_size = "8KB"
+elif sdk_config.get("MMU_PAGE_SIZE_16KB", False):
+    mmu_page_size = "16KB"
+elif sdk_config.get("MMU_PAGE_SIZE_32KB", False):
+    mmu_page_size = "32KB"
+else:
+    mmu_page_size = "64KB"
+
 if sdk_config.get("SOC_MMU_PAGE_SIZE_CONFIGURABLE", False):
     if board_flash_size == "2MB":
         mmu_page_size = "32KB"
@@ -2218,7 +2227,7 @@ def _parse_size(value):
 partitions_csv = env.subst("$PARTITIONS_TABLE_CSV")
 result = []
 next_offset = 0
-bound = int(board.get("upload.offset_address", "0x10000"), 16) # default 0x10000
+bound = 0x10000
 with open(partitions_csv) as fp:
     for line in fp.readlines():
         line = line.strip()

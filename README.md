@@ -5,7 +5,7 @@
 
 [![Examples](https://github.com/tasmota/platform-espressif32/actions/workflows/examples.yml/badge.svg)](https://github.com/tasmota/platform-espressif32/actions/workflows/examples.yml)[![GitHub Releases](https://img.shields.io/github/downloads/tasmota/platform-espressif32/total?label=downloads)](https://github.com/tasmota/platform-espressif32/releases/latest)
 
-Espressif Systems is a privately held fabless semiconductor company. They provide wireless communications and Wi-Fi chips which are widely used in mobile devices and the Internet of Things applications.
+Espressif Systems is a privately held fabless semiconductor company. They provide wireless communications chips which are widely used.
 
 * [Home](http://platformio.org/platforms/espressif32) (home page in PlatformIO Platform Registry)
 * [Documentation](http://docs.platformio.org/page/platforms/espressif32.html) (advanced usage, packages, boards, frameworks, etc.)
@@ -15,14 +15,14 @@ Espressif Systems is a privately held fabless semiconductor company. They provid
 1. [Install PlatformIO](http://platformio.org)
 2. Create PlatformIO project and configure a platform option in [platformio.ini](http://docs.platformio.org/page/projectconf.html) file:
 
-### Development build Arduino 3.2.0+ and IDF 5.4.0+ (build from development branches)
-Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3 and ESP32-H2
-
+### Development build Arduino 3.2.0+ and IDF 5.4.1+ (build from development branches)
+Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3, ESP32-H2 and ESP32-P4
 ```                  
 [platformio]
 platform = https://github.com/tasmota/platform-espressif32.git#Arduino/IDF54
 framework = arduino
 ```
+
 ## Hybrid compile: Build customized Arduino IDF libraries
 Adding the new option `custom_sdkconfig` in an `[env]` will compile the Arduino libraries using the sdkconfig settings
 from the framework and adds the changes specified in `custom_sdkconfig`. After the compile run the Arduino project `[env]` is
@@ -34,21 +34,16 @@ Example: Switching off PPP modem support only for `[env:esp32-no-PPP]`
 board = esp32dev
 custom_sdkconfig = '# CONFIG_LWIP_PPP_SUPPORT is not set'
 ```
-## ESP32 Arduino framework
-
-Example:
+## ESP32 Arduino
 ```
 [env:esp32]
 board = esp32dev
 ```
 
-## ESP32 Solo1 Arduino framework
-
-add in your env
+## ESP32 Solo1 Arduino
 ```
 [env:esp32solo1]
 board = esp32-solo1
-build_flags = -DFRAMEWORK_ARDUINO_SOLO1
 ```
 The released frameworks can be downloaded [here](https://github.com/tasmota/arduino-esp32/releases)
 
