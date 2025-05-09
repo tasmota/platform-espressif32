@@ -19,7 +19,7 @@ Espressif Systems is a privately held fabless semiconductor company. They provid
 Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3, ESP32-H2 and ESP32-P4
 ```                  
 [platformio]
-platform = https://github.com/Jason2866/platform-espressif32.git#Arduino/IDF54
+platform = https://github.com/tasmota/platform-espressif32.git#Arduino/IDF54
 framework = arduino
 ```
 
