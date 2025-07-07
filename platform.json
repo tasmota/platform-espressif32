@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2025.05.30",
+  "version": "25.07.30",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,13 +33,13 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.3.250504/framework-arduinoespressif32.zip"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.2.1.250707/framework-arduinoespressif.zip"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.3.250501/esp-idf-v5.3.3.zip"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.3.250702/esp-idf-v5.3.3.zip"
     },
     "toolchain-xtensa-esp-elf": {
       "type": "toolchain",
@@ -80,7 +80,7 @@
       "type": "uploader",
       "optional": false,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esptool/releases/download/v4.8.10/esptool.zip"
+      "version": "https://github.com/tasmota/esptool/releases/download/v5.0.0/esptool.zip"
     },
     "tl-install": {
       "type": "tool",
@@ -88,12 +88,18 @@
       "owner": "pioarduino",
       "version": "https://github.com/pioarduino/esp_install/releases/download/v5.0.0/esp_install-v5.0.0.zip"
     },
+      "contrib-piohome": {
+      "optional": true,
+      "owner": "pioarduino",
+      "package-version": "3.4.4",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/contrib-piohome-3.4.4.tar.gz"
+    },
     "tool-openocd-esp32": {
       "type": "debugger",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "2.1200.20250226",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/openocd-v0.12.0-esp32-20250226.zip"
+      "package-version": "2.1200.20250707",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/openocd-v0.12.0-esp32-20250707.zip"
     },
     "tool-mklittlefs": {
       "type": "uploader",

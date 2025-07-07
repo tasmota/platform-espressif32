@@ -17,7 +17,7 @@ jobs:
           - "examples/arduino-blink"
           - "examples/arduino-rmt-blink"
           - "examples/arduino-wifiscan"
-          #- "examples/arduino-usb-keyboard"
+          - "examples/arduino-usb-keyboard"
           - "examples/espidf-arduino-blink"
           - "examples/espidf-arduino-littlefs"
           - "examples/espidf-blink"
@@ -31,6 +31,13 @@ jobs:
           - "examples/espidf-ulp"
           - "examples/espidf-ulp-riscv"
           - "examples/tasmota"
+        exclude:
+          - os: windows-latest
+            example: "examples/espidf-ulp"
+          - os: windows-latest
+            example: "examples/espidf-ulp-riscv"
+          - os: windows-latest
+            example: "examples/tasmota"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -42,15 +49,17 @@ jobs:
           python-version: "3.13"
       - name: Install dependencies
         run: |
-          pip install wheel
-          pip install -U https://github.com/Jason2866/platformio-core/archive/refs/tags/v6.1.18.zip
+          pip install uv
+          uv pip install --system -U https://github.com/Jason2866/platformio-core/archive/pioarduino.zip
           pio pkg install --global --platform file://.
       - name: git clone Tasmota and add to examples
-        if: "matrix.example == 'examples/tasmota' && matrix.os != 'windows-latest'"
+        if: "matrix.example == 'examples/tasmota'"
         run: |
           git clone -b development --depth 1 https://github.com/arendst/Tasmota.git examples/tasmota
           cp examples/tasmota_platformio_override.ini examples/tasmota/platformio_override.ini
       - name: Build examples
-        if: "matrix.example != 'examples/tasmota' || matrix.os != 'windows-latest'"
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
         run: |
-          pio run -d ${{ matrix.example }}
+          pio run -d ${{ matrix.example }} --disable-auto-clean
