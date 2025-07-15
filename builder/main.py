@@ -35,16 +35,7 @@ from platformio.project.helpers import get_project_dir
 from platformio.package.version import pepver_to_semver
 from platformio.util import get_serial_ports
 
-
-# Initialize environment and configuration
-env = DefaultEnvironment()
-platform = env.PioPlatform()
-projectconfig = env.GetProjectConfig()
-terminal_cp = locale.getpreferredencoding().lower()
-
-# Framework directory path
-FRAMEWORK_DIR = platform.get_package_dir("framework-arduinoespressif32")
-
+# Python dependencies required for the build process
 python_deps = {
     "uv": ">=0.1.0",
     "pyyaml": ">=6.0.2",
@@ -55,9 +46,140 @@ python_deps = {
     "esp-idf-size": ">=1.6.1"
 }
 
+# Initialize environment and configuration
+env = DefaultEnvironment()
+platform = env.PioPlatform()
+projectconfig = env.GetProjectConfig()
+terminal_cp = locale.getpreferredencoding().lower()
+PYTHON_EXE = env.subst("$PYTHONEXE")  # Global Python executable path
+
+# Framework directory path
+FRAMEWORK_DIR = platform.get_package_dir("framework-arduinoespressif32")
+
+
+def add_to_pythonpath(path):
+    """
+    Add a path to the PYTHONPATH environment variable (cross-platform).
+    
+    Args:
+        path (str): The path to add to PYTHONPATH
+    """
+    # Normalize the path for the current OS
+    normalized_path = os.path.normpath(path)
+    
+    # Add to PYTHONPATH environment variable
+    if "PYTHONPATH" in os.environ:
+        current_paths = os.environ["PYTHONPATH"].split(os.pathsep)
+        normalized_current_paths = [os.path.normpath(p) for p in current_paths]
+        if normalized_path not in normalized_current_paths:
+            os.environ["PYTHONPATH"] = normalized_path + os.pathsep + os.environ.get("PYTHONPATH", "")
+    else:
+        os.environ["PYTHONPATH"] = normalized_path
+    
+    # Also add to sys.path for immediate availability
+    if normalized_path not in sys.path:
+        sys.path.insert(0, normalized_path)
+
+
+def setup_python_paths():
+    """
+    Setup Python paths based on the actual Python executable being used.
+    """
+    if not PYTHON_EXE or not os.path.isfile(PYTHON_EXE):
+        return
+    
+    # Get the directory containing the Python executable
+    python_dir = os.path.dirname(PYTHON_EXE)
+    add_to_pythonpath(python_dir)
+    
+    # Try to find site-packages directory using the actual Python executable
+    result = subprocess.run(
+        [PYTHON_EXE, "-c", "import site; print(site.getsitepackages()[0])"],
+        capture_output=True,
+        text=True,
+        timeout=5
+    )
+    if result.returncode == 0:
+        site_packages = result.stdout.strip()
+        if os.path.isdir(site_packages):
+            add_to_pythonpath(site_packages)
+
+# Setup Python paths based on the actual Python executable
+setup_python_paths()
+
+
+def _get_executable_path(python_exe, executable_name):
+    """
+    Get the path to an executable binary (esptool, uv, etc.) based on the Python executable path.
+    
+    Args:
+        python_exe (str): Path to Python executable
+        executable_name (str): Name of the executable to find (e.g., 'esptool', 'uv')
+        
+    Returns:
+        str: Path to executable or fallback to executable name
+    """
+    if not python_exe or not os.path.isfile(python_exe):
+        return executable_name  # Fallback to command name
+    
+    python_dir = os.path.dirname(python_exe)
+    
+    if sys.platform == "win32":
+        scripts_dir = os.path.join(python_dir, "Scripts")
+        executable_path = os.path.join(scripts_dir, f"{executable_name}.exe")
+    else:
+        # For Unix-like systems, executables are typically in the same directory as python
+        # or in a bin subdirectory
+        executable_path = os.path.join(python_dir, executable_name)
+        
+        # If not found in python directory, try bin subdirectory
+        if not os.path.isfile(executable_path):
+            bin_dir = os.path.join(python_dir, "bin")
+            executable_path = os.path.join(bin_dir, executable_name)
+    
+    if os.path.isfile(executable_path):
+        return executable_path
+    
+    return executable_name  # Fallback to command name
+
+
+def _get_esptool_executable_path(python_exe):
+    """
+    Get the path to the esptool executable binary.
+    
+    Args:
+        python_exe (str): Path to Python executable
+        
+    Returns:
+        str: Path to esptool executable
+    """
+    return _get_executable_path(python_exe, "esptool")
+
+
+def _get_uv_executable_path(python_exe):
+    """
+    Get the path to the uv executable binary.
+    
+    Args:
+        python_exe (str): Path to Python executable
+        
+    Returns:
+        str: Path to uv executable
+    """
+    return _get_executable_path(python_exe, "uv")
+
 
 def get_packages_to_install(deps, installed_packages):
-    """Generator for Python packages to install"""
+    """
+    Generator for Python packages that need to be installed.
+    
+    Args:
+        deps (dict): Dictionary of package names and version specifications
+        installed_packages (dict): Dictionary of currently installed packages
+        
+    Yields:
+        str: Package name that needs to be installed
+    """
     for package, spec in deps.items():
         if package not in installed_packages:
             yield package
@@ -68,10 +190,18 @@ def get_packages_to_install(deps, installed_packages):
 
 
 def install_python_deps():
-    """Ensure uv package manager is available, install with pip if not"""
+    """
+    Ensure uv package manager is available and install required Python dependencies.
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    # Get uv executable path
+    uv_executable = _get_uv_executable_path(PYTHON_EXE)
+    
     try:
         result = subprocess.run(
-            ["uv", "--version"],
+            [uv_executable, "--version"],
             capture_output=True,
             text=True,
             timeout=3
@@ -83,15 +213,27 @@ def install_python_deps():
     if not uv_available:
         try:
             result = subprocess.run(
-                [env.subst("$PYTHONEXE"), "-m", "pip", "install", "uv>=0.1.0", "-q", "-q", "-q"],
+                [PYTHON_EXE, "-m", "pip", "install", "uv>=0.1.0", "-q", "-q", "-q"],
                 capture_output=True,
                 text=True,
-                timeout=30  # 30 second timeout
+                timeout=30,  # 30 second timeout
+                env=os.environ  # Use modified environment with custom PYTHONPATH
             )
             if result.returncode != 0:
                 if result.stderr:
                     print(f"Error output: {result.stderr.strip()}")
                 return False
+            
+            # Update uv executable path after installation
+            uv_executable = _get_uv_executable_path(PYTHON_EXE)
+            
+            # Add Scripts directory to PATH for Windows
+            if sys.platform == "win32":
+                python_dir = os.path.dirname(PYTHON_EXE)
+                scripts_dir = os.path.join(python_dir, "Scripts")
+                if os.path.isdir(scripts_dir):
+                    os.environ["PATH"] = scripts_dir + os.pathsep + os.environ.get("PATH", "")
+                    
         except subprocess.TimeoutExpired:
             print("Error: uv installation timed out")
             return False
@@ -104,15 +246,22 @@ def install_python_deps():
 
     
     def _get_installed_uv_packages():
+        """
+        Get list of installed packages using uv.
+        
+        Returns:
+            dict: Dictionary of installed packages with versions
+        """
         result = {}
         try:
-            cmd = ["uv", "pip", "list", "--format=json"]
+            cmd = [uv_executable, "pip", "list", "--format=json"]
             result_obj = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
-                timeout=30  # 30 second timeout
+                timeout=30,  # 30 second timeout
+                env=os.environ  # Use modified environment with custom PYTHONPATH
             )
             
             if result_obj.returncode == 0:
@@ -144,8 +293,8 @@ def install_python_deps():
         packages_list = [f"{p}{python_deps[p]}" for p in packages_to_install]
         
         cmd = [
-            "uv", "pip", "install",
-            f"--python={env.subst('$PYTHONEXE')}",
+            uv_executable, "pip", "install",
+            f"--python={PYTHON_EXE}",
             "--quiet", "--upgrade"
         ] + packages_list
         
@@ -154,7 +303,8 @@ def install_python_deps():
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30  # 30 second timeout for package installation
+                timeout=30,  # 30 second timeout for package installation
+                env=os.environ  # Use modified environment with custom PYTHONPATH
             )
             
             if result.returncode != 0:
@@ -176,39 +326,60 @@ def install_python_deps():
     return True
 
 
-def install_esptool(env):
-    """Install esptool from package folder "tool-esptoolpy" using uv package manager"""
+def install_esptool():
+    """
+    Install esptool from package folder "tool-esptoolpy" using uv package manager.
+    Also determines the path to the esptool executable binary.
+    
+    Returns:
+        str: Path to esptool executable, or 'esptool' as fallback
+    """
     try:
-        subprocess.check_call([env.subst("$PYTHONEXE"), "-c", "import esptool"], 
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
+        subprocess.check_call(
+            [PYTHON_EXE, "-c", "import esptool"], 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL,
+            env=os.environ
+        )
+        esptool_binary_path = _get_esptool_executable_path(PYTHON_EXE)
+        return esptool_binary_path
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
     esptool_repo_path = env.subst(platform.get_package_dir("tool-esptoolpy") or "")
     if esptool_repo_path and os.path.isdir(esptool_repo_path):
+        uv_executable = _get_uv_executable_path(PYTHON_EXE)
         try:
             subprocess.check_call([
-                "uv", "pip", "install", "--quiet",
-                f"--python={env.subst('$PYTHONEXE')}", 
+                uv_executable, "pip", "install", "--quiet",
+                f"--python={PYTHON_EXE}",
                 "-e", esptool_repo_path
-            ])
-            return True
+            ], env=os.environ)
+
+            esptool_binary_path = _get_esptool_executable_path(PYTHON_EXE)
+            return esptool_binary_path
+            
         except subprocess.CalledProcessError as e:
             print(f"Warning: Failed to install esptool: {e}")
-            return False
+            return 'esptool'  # Fallback
     
-    return False
+    return 'esptool'  # Fallback
 
 
+# Install Python dependencies and esptool
 install_python_deps()
-install_esptool(env)
+esptool_binary_path = install_esptool()
 
 
 def BeforeUpload(target, source, env):
     """
     Prepare the environment before uploading firmware.
     Handles port detection and special upload configurations.
+    
+    Args:
+        target: SCons target
+        source: SCons source
+        env: SCons environment object
     """
     upload_options = {}
     if "BOARD" in env:
@@ -228,7 +399,12 @@ def BeforeUpload(target, source, env):
 def _get_board_memory_type(env):
     """
     Determine the memory type configuration for the board.
-    Returns the appropriate memory type string based on board configuration.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        str: The appropriate memory type string based on board configuration
     """
     board_config = env.BoardConfig()
     default_type = "%s_%s" % (
@@ -249,20 +425,41 @@ def _get_board_memory_type(env):
 def _normalize_frequency(frequency):
     """
     Convert frequency value to normalized string format (e.g., "40m").
-    Removes 'L' suffix and converts to MHz format.
+    
+    Args:
+        frequency: Frequency value to normalize
+        
+    Returns:
+        str: Normalized frequency string with 'm' suffix
     """
     frequency = str(frequency).replace("L", "")
     return str(int(int(frequency) / 1000000)) + "m"
 
 
 def _get_board_f_flash(env):
-    """Get the flash frequency for the board."""
+    """
+    Get the flash frequency for the board.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        str: Flash frequency string
+    """
     frequency = env.subst("$BOARD_F_FLASH")
     return _normalize_frequency(frequency)
 
 
 def _get_board_f_image(env):
-    """Get the image frequency for the board, fallback to flash frequency."""
+    """
+    Get the image frequency for the board, fallback to flash frequency.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        str: Image frequency string
+    """
     board_config = env.BoardConfig()
     if "build.f_image" in board_config:
         return _normalize_frequency(board_config.get("build.f_image"))
@@ -271,7 +468,15 @@ def _get_board_f_image(env):
 
 
 def _get_board_f_boot(env):
-    """Get the boot frequency for the board, fallback to flash frequency."""
+    """
+    Get the boot frequency for the board, fallback to flash frequency.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        str: Boot frequency string
+    """
     board_config = env.BoardConfig()
     if "build.f_boot" in board_config:
         return _normalize_frequency(board_config.get("build.f_boot"))
@@ -283,6 +488,12 @@ def _get_board_flash_mode(env):
     """
     Determine the appropriate flash mode for the board.
     Handles special cases for OPI memory types.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        str: Flash mode string
     """
     if _get_board_memory_type(env) in ("opi_opi", "opi_qspi"):
         return "dout"
@@ -297,6 +508,12 @@ def _get_board_boot_mode(env):
     """
     Determine the boot mode for the board.
     Handles special cases for OPI memory types.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        str: Boot mode string
     """
     memory_type = env.BoardConfig().get("build.arduino.memory_type", "")
     build_boot = env.BoardConfig().get("build.boot", "$BOARD_FLASH_MODE")
@@ -308,7 +525,12 @@ def _get_board_boot_mode(env):
 def _parse_size(value):
     """
     Parse size values from various formats (int, hex, K/M suffixes).
-    Returns the size in bytes as an integer.
+    
+    Args:
+        value: Size value to parse
+        
+    Returns:
+        int: Size in bytes as an integer
     """
     if isinstance(value, int):
         return value
@@ -326,6 +548,12 @@ def _parse_partitions(env):
     """
     Parse the partition table CSV file and return partition information.
     Also sets the application offset for the environment.
+    
+    Args:
+        env: SCons environment object
+        
+    Returns:
+        list: List of partition dictionaries
     """
     partitions_csv = env.subst("$PARTITIONS_TABLE_CSV")
     if not isfile(partitions_csv):
@@ -377,6 +605,9 @@ def _update_max_upload_size(env):
     """
     Update the maximum upload size based on partition table configuration.
     Prioritizes user-specified partition names.
+    
+    Args:
+        env: SCons environment object
     """
     if not env.get("PARTITIONS_TABLE_CSV"):
         return
@@ -412,7 +643,15 @@ def _update_max_upload_size(env):
 
 
 def _to_unix_slashes(path):
-    """Convert Windows-style backslashes to Unix-style forward slashes."""
+    """
+    Convert Windows-style backslashes to Unix-style forward slashes.
+    
+    Args:
+        path (str): Path to convert
+        
+    Returns:
+        str: Path with Unix-style slashes
+    """
     return path.replace("\\", "/")
 
 
@@ -420,6 +659,9 @@ def fetch_fs_size(env):
     """
     Extract filesystem size and offset information from partition table.
     Sets FS_START, FS_SIZE, FS_PAGE, and FS_BLOCK environment variables.
+    
+    Args:
+        env: SCons environment object
     """
     fs = None
     for p in _parse_partitions(env):
@@ -450,7 +692,17 @@ def fetch_fs_size(env):
 
 
 def __fetch_fs_size(target, source, env):
-    """Wrapper function for fetch_fs_size to be used as SCons emitter."""
+    """
+    Wrapper function for fetch_fs_size to be used as SCons emitter.
+    
+    Args:
+        target: SCons target
+        source: SCons source
+        env: SCons environment object
+        
+    Returns:
+        tuple: (target, source) tuple
+    """
     fetch_fs_size(env)
     return (target, source)
 
@@ -458,12 +710,30 @@ def __fetch_fs_size(target, source, env):
 def check_lib_archive_exists():
     """
     Check if lib_archive is set in platformio.ini configuration.
-    Returns True if found, False otherwise.
+    
+    Returns:
+        bool: True if found, False otherwise
     """
     for section in projectconfig.sections():
         if "lib_archive" in projectconfig.options(section):
             return True
     return False
+
+
+def switch_off_ldf():
+    """
+    Disables LDF (Library Dependency Finder) for uploadfs, uploadfsota, and buildfs targets.
+
+    This optimization prevents unnecessary library dependency scanning and compilation
+    when only filesystem operations are performed.
+    """
+    fs_targets = {"uploadfs", "uploadfsota", "buildfs", "erase"}
+    if fs_targets & set(COMMAND_LINE_TARGETS):
+        # Disable LDF by modifying project configuration directly
+        env_section = "env:" + env["PIOENV"]
+        if not projectconfig.has_section(env_section):
+            projectconfig.add_section(env_section)
+        projectconfig.set(env_section, "lib_ldf_mode", "off")
 
 
 # Initialize board configuration and MCU settings
@@ -480,6 +750,12 @@ if mcu in ("esp32c2", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4"):
 if "INTEGRATION_EXTRA_DATA" not in env:
     env["INTEGRATION_EXTRA_DATA"] = {}
 
+# Take care of possible whitespaces in path
+objcopy_value = (
+    f'"{esptool_binary_path}"' 
+    if ' ' in esptool_binary_path 
+    else esptool_binary_path
+)
 # Configure build tools and environment variables
 env.Replace(
     __get_board_boot_mode=_get_board_boot_mode,
@@ -509,7 +785,7 @@ env.Replace(
         "bin",
         "%s-elf-gdb" % toolchain_arch,
     ),
-    OBJCOPY='esptool',
+    OBJCOPY=objcopy_value,
     RANLIB="%s-elf-gcc-ranlib" % toolchain_arch,
     SIZETOOL="%s-elf-size" % toolchain_arch,
     ARFLAGS=["rc"],
@@ -594,10 +870,19 @@ if not env.get("PIOFRAMEWORK"):
     env.SConscript("frameworks/_bare.py", exports="env")
 
 
+# Disable LDF for filesystem operations
+switch_off_ldf()
+
+
 def firmware_metrics(target, source, env):
     """
-    Custom target to run esp-idf-size with support for command line parameters
+    Custom target to run esp-idf-size with support for command line parameters.
     Usage: pio run -t metrics -- [esp-idf-size arguments]
+    
+    Args:
+        target: SCons target
+        source: SCons source
+        env: SCons environment object
     """
     if terminal_cp != "utf-8":
         print("Firmware metrics can not be shown. Set the terminal codepage to \"utf-8\"")
@@ -614,7 +899,7 @@ def firmware_metrics(target, source, env):
         return
 
     try:        
-        cmd = [env.subst("$PYTHONEXE"), "-m", "esp_idf_size", "--ng"]
+        cmd = [PYTHON_EXE, "-m", "esp_idf_size", "--ng"]
         
         # Parameters from platformio.ini
         extra_args = env.GetProjectOption("custom_esp_idf_size_args", "")
@@ -640,8 +925,8 @@ def firmware_metrics(target, source, env):
         if env.GetProjectOption("custom_esp_idf_size_verbose", False):
             print(f"Running command: {' '.join(cmd)}")
         
-        # Call esp-idf-size
-        result = subprocess.run(cmd, check=False, capture_output=False)
+        # Call esp-idf-size with modified environment
+        result = subprocess.run(cmd, check=False, capture_output=False, env=os.environ)
         
         if result.returncode != 0:
             print(f"Warning: esp-idf-size exited with code {result.returncode}")
@@ -742,7 +1027,7 @@ if upload_protocol == "espota":
     env.Replace(
         UPLOADER=join(FRAMEWORK_DIR, "tools", "espota.py"),
         UPLOADERFLAGS=["--debug", "--progress", "-i", "$UPLOAD_PORT"],
-        UPLOADCMD='"$PYTHONEXE" "$UPLOADER" $UPLOADERFLAGS -f $SOURCE',
+        UPLOADCMD=f'"{PYTHON_EXE}" "$UPLOADER" $UPLOADERFLAGS -f $SOURCE',
     )
     if set(["uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
         env.Append(UPLOADERFLAGS=["--spiffs"])
@@ -751,7 +1036,7 @@ if upload_protocol == "espota":
 # Configure upload protocol: esptool
 elif upload_protocol == "esptool":
     env.Replace(
-        UPLOADER="esptool",
+        UPLOADER=objcopy_value,
         UPLOADERFLAGS=[
             "--chip",
             mcu,
