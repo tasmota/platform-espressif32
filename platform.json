@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2025.07.31",
+  "version": "2025.08.30",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,27 +33,27 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.3.250712/framework-arduinoespressif32.zip"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.3.250808/framework-arduinoespressif32.zip"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.3.250702/esp-idf-v5.3.3.zip"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.3.250801/esp-idf-v5.3.3.zip"
     },
     "toolchain-xtensa-esp-elf": {
       "type": "toolchain",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "13.2.0+20240530",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-13.2.0_20240530.zip"
+      "package-version": "13.2.0+20250707",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-13.2.0_20250707.zip"
     },
     "toolchain-riscv32-esp": {
       "type": "toolchain",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "13.2.0+20240530",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-13.2.0_20240530.zip"
+      "package-version": "13.2.0+20250707",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-13.2.0_20250707.zip"
     },
     "toolchain-esp32ulp": {
       "type": "toolchain",
@@ -80,14 +80,15 @@
       "type": "uploader",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "5.0.1",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/esptoolpy-v5.0.1.zip"
+      "package-version": "5.0.2",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/esptoolpy-v5.0.2.zip"
     },
-    "tl-install": {
+    "tool-esp_install": {
       "type": "tool",
       "optional": false,
       "owner": "pioarduino",
-      "version": "https://github.com/pioarduino/esp_install/releases/download/v5.1.0/esp_install-v5.1.0.zip"
+      "package-version": "5.3.0",
+      "version": "https://github.com/pioarduino/esp_install/releases/download/v5.3.0/esp_install-v5.3.0.zip"
     },
       "contrib-piohome": {
       "optional": true,
@@ -162,8 +163,8 @@
       "type": "tool",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "1.13.0",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/ninja-1.13.0.zip"
+      "package-version": "1.13.1",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/ninja-1.13.1.zip"
     },
     "tool-scons": {
       "type": "tool",

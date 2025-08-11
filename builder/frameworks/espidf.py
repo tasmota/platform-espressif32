@@ -1343,7 +1343,7 @@ def get_partition_info(pt_path, pt_offset, pt_params):
         "offset",
     ]
 
-    if pt_params["name"] == "boot":
+    if pt_params.get("name") == "boot":
         cmd.append("--partition-boot-default")
     else:
         cmd.extend(
@@ -1374,8 +1374,11 @@ def get_partition_info(pt_path, pt_offset, pt_params):
 
 def get_app_partition_offset(pt_table, pt_offset):
     # Get the default boot partition offset
-    app_params = get_partition_info(pt_table, pt_offset, {"name": "boot"})
-    return app_params.get("offset", "0x10000")
+    ota_app_params = get_partition_info(pt_table, pt_offset, {"type": "app", "subtype": "ota_0"})
+    if ota_app_params.get("offset"):
+        return ota_app_params["offset"]
+    factory_app_params = get_partition_info(pt_table, pt_offset, {"type": "app", "subtype": "factory"})
+    return factory_app_params.get("offset", "0x10000")
 
 
 def preprocess_linker_file(src_ld_script, target_ld_script):
@@ -1480,11 +1483,13 @@ def generate_mbedtls_bundle(sdk_config):
 
 
 def install_python_deps():
+    PYTHON_EXE = env.subst("$PYTHONEXE")
+    UV_EXE = os.path.join(os.path.dirname(PYTHON_EXE), "uv" + (".exe" if IS_WINDOWS else ""))
     def _get_installed_uv_packages(python_exe_path):
         result = {}
         try:
             uv_output = subprocess.check_output([
-                "uv", "pip", "list", "--python", python_exe_path, "--format=json"
+                UV_EXE, "pip", "list", "--python", python_exe_path, "--format=json"
             ])
             packages = json.loads(uv_output)
         except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as e:
@@ -1507,7 +1512,7 @@ def install_python_deps():
         # https://github.com/platformio/platform-espressif32/issues/635
         "cryptography": "~=44.0.0",
         "pyparsing": ">=3.1.0,<4",
-        "idf-component-manager": "~=2.0.1",
+        "idf-component-manager": "~=2.2.2",
         "esp-idf-kconfig": "~=2.5.0"
     }
 
@@ -1531,7 +1536,7 @@ def install_python_deps():
         # Use uv to install packages in the specific Python environment
         env.Execute(
             env.VerboseAction(
-                f'uv pip install --python "{python_exe_path}" {packages_str}',
+                f'"{UV_EXE}" pip install --python "{python_exe_path}" {packages_str}',
                 "Installing ESP-IDF's Python dependencies with uv",
             )
         )
@@ -1540,7 +1545,7 @@ def install_python_deps():
         # Install windows-curses in the IDF Python environment
         env.Execute(
             env.VerboseAction(
-                f'uv pip install --python "{python_exe_path}" windows-curses',
+                f'"{UV_EXE}" pip install --python "{python_exe_path}" windows-curses',
                 "Installing windows-curses package with uv",
             )
         )
@@ -2131,7 +2136,8 @@ if ("arduino" in env.subst("$PIOFRAMEWORK")) and ("espidf" not in env.subst("$PI
             pass
         print("*** Copied compiled %s IDF libraries to Arduino framework ***" % idf_variant)
 
-        pio_exe_path = shutil.which("platformio"+(".exe" if IS_WINDOWS else ""))
+        PYTHON_EXE = env.subst("$PYTHONEXE")
+        pio_exe_path = os.path.join(os.path.dirname(PYTHON_EXE), "pio" + (".exe" if IS_WINDOWS else ""))
         pio_cmd = env["PIOENV"]
         env.Execute(
             env.VerboseAction(
@@ -2228,33 +2234,12 @@ def _parse_size(value):
 # Configure application partition offset
 #
 
-partitions_csv = env.subst("$PARTITIONS_TABLE_CSV")
-result = []
-next_offset = 0
-bound = 0x10000
-with open(partitions_csv) as fp:
-    for line in fp.readlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        tokens = [t.strip() for t in line.split(",")]
-        if len(tokens) < 5:
-            continue
-        partition = {
-            "name": tokens[0],
-            "type": tokens[1],
-            "subtype": tokens[2],
-            "offset": tokens[3] or next_offset,
-            "size": tokens[4],
-            "flags": tokens[5] if len(tokens) > 5 else None
-        }
-        result.append(partition)
-        next_offset = _parse_size(partition["offset"])
-        if (partition["subtype"] == "ota_0"):
-            bound = next_offset
-        next_offset = (next_offset + bound - 1) & ~(bound - 1)
+app_offset = get_app_partition_offset(
+    env.subst("$PARTITIONS_TABLE_CSV"),
+    partition_table_offset
+)
 
-env.Replace(ESP32_APP_OFFSET=str(hex(bound)))
+env.Replace(ESP32_APP_OFFSET=app_offset)
 
 #
 # Propagate application offset to debug configurations
