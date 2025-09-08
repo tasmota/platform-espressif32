@@ -302,12 +302,7 @@ class PathCache:
     def sdk_dir(self):
         if self._sdk_dir is None:
             self._sdk_dir = fs.to_unix_path(
-                join(self.framework_dir,
-                     "tools",
-                     "esp32-arduino-libs",
-                     self.mcu,
-                     "include"
-                )
+                str(Path(self.framework_dir) / "tools" / "esp32-arduino-libs" / self.mcu / "include")
             )
         return self._sdk_dir
 
@@ -495,7 +490,7 @@ def safe_remove_sdkconfig_files():
     envs = [section.replace("env:", "") for section in config.sections()
             if section.startswith("env:")]
     for env_name in envs:
-        file_path = join(project_dir, f"sdkconfig.{env_name}")
+        file_path = str(Path(project_dir) / f"sdkconfig.{env_name}")
         if exists(file_path):
             safe_delete_file(file_path)
 
@@ -550,9 +545,7 @@ FRAMEWORK_DIR = path_cache.framework_dir
 
 SConscript("_embed_files.py", exports="env")
 
-flag_any_custom_sdkconfig = exists(join(
-    FRAMEWORK_DIR, "tools", "esp32-arduino-libs",
-    "sdkconfig"))
+flag_any_custom_sdkconfig = exists(str(Path(FRAMEWORK_DIR) / "tools" / "esp32-arduino-libs" / "sdkconfig"))
 
 
 def has_unicore_flags():
@@ -583,7 +576,7 @@ def matching_custom_sdkconfig():
     if not flag_any_custom_sdkconfig:
         return True, cust_sdk_is_present
 
-    last_sdkconfig_path = join(project_dir, "sdkconfig.defaults")
+    last_sdkconfig_path = str(Path(project_dir) / "sdkconfig.defaults")
     if not exists(last_sdkconfig_path):
         return False, cust_sdk_is_present
 
@@ -889,5 +882,5 @@ if ("arduino" in pioframework and "espidf" not in pioframework and
     if IS_WINDOWS:
         env.AddBuildMiddleware(smart_include_length_shorten)
 
-    build_script_path = join(FRAMEWORK_DIR, "tools", "pioarduino-build.py")
+    build_script_path = str(Path(FRAMEWORK_DIR) / "tools" / "pioarduino-build.py")
     SConscript(build_script_path)
