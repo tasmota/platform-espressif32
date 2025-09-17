@@ -568,10 +568,13 @@ else:
         target_firm = env.ElfToBin(str(Path("$BUILD_DIR") / "${PROGNAME}"), target_elf)
         env.Depends(target_firm, "checkprogsize")
 
-metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
-silent_action = env.Action(metrics_cmd)
-silent_action.strfunction = lambda target, source, env: ""
-env.AddPostAction("checkprogsize", silent_action)
+if terminal_cp == "utf-8":
+    metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
+    silent_action = env.Action(metrics_cmd)
+    silent_action.strfunction = lambda target, source, env: ""
+    env.AddPostAction("checkprogsize", silent_action)
+else:
+    print("Firmware metrics can not be shown. Set the terminal codepage to \"utf-8\"")
 
 # Configure platform targets
 env.AddPlatformTarget(
@@ -784,27 +787,28 @@ env.AddPlatformTarget(
     "Erase Flash",
 )
 
-# Register firmware metrics Action
-metrics = env.Action(metrics_cmd)
+if terminal_cp == "utf-8":
+    # Register firmware metrics Action
+    metrics = env.Action(metrics_cmd)
 
-env.AddCustomTarget(
-    name="metrics",
-    dependencies="$BUILD_DIR/${PROGNAME}.elf",
-    actions=metrics,
-    title="Firmware Size Metrics",
-    description="Analyze firmware size using esp-idf-size",
-    always_build=True,
-)
+    env.AddCustomTarget(
+        name="metrics",
+        dependencies="$BUILD_DIR/${PROGNAME}.elf",
+        actions=metrics,
+        title="Firmware Size Metrics",
+        description="Analyze firmware size using esp-idf-size",
+        always_build=True,
+    )
 
-# Additional Target without Build-Dependency when already compiled
-env.AddCustomTarget(
-    name="metrics-only",
-    dependencies=None,
-    actions=metrics,
-    title="Firmware Size Metrics (No Build)",
-    description="Analyze firmware size without building first",
-    always_build=True,
-)
+    # Additional Target without Build-Dependency when already compiled
+    env.AddCustomTarget(
+        name="metrics-only",
+        dependencies=None,
+        actions=metrics,
+        title="Firmware Size Metrics (No Build)",
+        description="Analyze firmware size without building first",
+        always_build=True,
+    )
 
 # Override memory inspection behavior
 env.SConscript("sizedata.py", exports="env")
