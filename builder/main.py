@@ -597,9 +597,12 @@ def firmware_metrics(target, source, env):
         
         # Call esp-idf-size with modified environment
         result = subprocess.run(cmd, capture_output=True, text=True, env=os.environ)
-        
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
         if result.returncode != 0:
             print(f"Warning: esp-idf-size exited with code {result.returncode}")
+        return result.returncode
 
     except FileNotFoundError:
         print("Error: Python executable not found.")
