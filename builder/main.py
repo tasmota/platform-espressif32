@@ -544,12 +544,6 @@ if not env.get("PIOFRAMEWORK"):
 # Disable LDF for filesystem operations
 switch_off_ldf()
 
-# Add firmware metrics output to post action
-metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
-metrics_action = env.VerboseAction(metrics_cmd, "Running firmware metrics (esp-idf-size)")
-env.AddPostAction("$BUILD_DIR/${PROGNAME}.elf", metrics_action)
-
-
 #
 # Target: Build executable and linkable firmware or FS image
 #
@@ -564,10 +558,13 @@ if "nobuild" in COMMAND_LINE_TARGETS:
         target_firm = str(Path("$BUILD_DIR") / "${PROGNAME}.bin")
 else:
     target_elf = env.BuildProgram()
-    silent_action = env.Action(firmware_metrics)
-    # Hack to silence scons command output
-    silent_action.strfunction = lambda target, source, env: ""
-    env.AddPostAction(target_elf, silent_action)
+    # Add firmware metrics output to post action
+    # silent_action = env.Action(metrics_action)
+    # silent_action.strfunction = lambda target, source, env: ""
+    # env.AddPostAction(target_elf, silent_action)
+    metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
+    metrics_action = env.Action(metrics_cmd)
+    env.AddPostAction("$BUILD_DIR/${PROGNAME}.elf", metrics_action)
     if set(["buildfs", "uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
         target_firm = env.DataToBin(
             str(Path("$BUILD_DIR") / "${ESP32_FS_IMAGE_NAME}"), "$PROJECT_DATA_DIR"
