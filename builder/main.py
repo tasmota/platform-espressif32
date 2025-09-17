@@ -561,7 +561,7 @@ else:
     metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
     silent_action = env.Action(metrics_cmd)
     silent_action.strfunction = lambda target, source, env: ""
-    env.AddPostAction("$BUILD_DIR/${PROGNAME}.elf", silent_action)
+    env.AddPostAction(target_elf, silent_action)
     if set(["buildfs", "uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
         target_firm = env.DataToBin(
             str(Path("$BUILD_DIR") / "${ESP32_FS_IMAGE_NAME}"), "$PROJECT_DATA_DIR"
@@ -783,13 +783,13 @@ env.AddPlatformTarget(
     "Erase Flash",
 )
 
-# Register Custom Target for firmware metrics
-metrics_action = env.VerboseAction(metrics_cmd, "Running firmware metrics")
+# Register firmware metrics Action
+metrics = env.Action(metrics_cmd)
 
 env.AddCustomTarget(
     name="metrics",
     dependencies="$BUILD_DIR/${PROGNAME}.elf",
-    actions=metrics_action,
+    actions=metrics,
     title="Firmware Size Metrics",
     description="Analyze firmware size using esp-idf-size",
     always_build=True,
@@ -799,7 +799,7 @@ env.AddCustomTarget(
 env.AddCustomTarget(
     name="metrics-only",
     dependencies=None,
-    actions=metrics_action,
+    actions=metrics,
     title="Firmware Size Metrics (No Build)",
     description="Analyze firmware size without building first",
     always_build=True,
