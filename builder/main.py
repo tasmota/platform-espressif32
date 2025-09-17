@@ -561,7 +561,7 @@ else:
     metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
     silent_action = env.Action(metrics_cmd)
     silent_action.strfunction = lambda target, source, env: ""
-    env.AddPostAction(target_elf, silent_action)
+    env.AddPostAction(target_firm, silent_action)
     if set(["buildfs", "uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
         target_firm = env.DataToBin(
             str(Path("$BUILD_DIR") / "${ESP32_FS_IMAGE_NAME}"), "$PROJECT_DATA_DIR"
