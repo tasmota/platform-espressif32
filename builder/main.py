@@ -596,7 +596,7 @@ def firmware_metrics(target, source, env):
             print(f"Running command: {' '.join(cmd)}")
         
         # Call esp-idf-size with modified environment
-        result = subprocess.run(cmd, check=False, capture_output=False, env=os.environ)
+        result = subprocess.run(cmd, capture_output=True, text=True, env=os.environ)
         
         if result.returncode != 0:
             print(f"Warning: esp-idf-size exited with code {result.returncode}")
