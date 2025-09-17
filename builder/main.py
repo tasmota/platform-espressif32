@@ -558,13 +558,10 @@ if "nobuild" in COMMAND_LINE_TARGETS:
         target_firm = str(Path("$BUILD_DIR") / "${PROGNAME}.bin")
 else:
     target_elf = env.BuildProgram()
-    # Add firmware metrics output to post action
-    # silent_action = env.Action(metrics_action)
-    # silent_action.strfunction = lambda target, source, env: ""
-    # env.AddPostAction(target_elf, silent_action)
     metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
-    metrics_action = env.Action(metrics_cmd)
-    env.AddPostAction("$BUILD_DIR/${PROGNAME}.elf", metrics_action)
+    silent_action = env.Action(metrics_cmd)
+    silent_action.strfunction = lambda target, source, env: ""
+    env.AddPostAction("$BUILD_DIR/${PROGNAME}.elf", silent_action)
     if set(["buildfs", "uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
         target_firm = env.DataToBin(
             str(Path("$BUILD_DIR") / "${ESP32_FS_IMAGE_NAME}"), "$PROJECT_DATA_DIR"
