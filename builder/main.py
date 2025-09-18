@@ -14,7 +14,6 @@
 
 import locale
 import os
-import platform
 import re
 import shlex
 import subprocess
@@ -572,11 +571,16 @@ else:
 if terminal_cp == "utf-8":
     # Check if running in VSCode with WSL
     def is_vscode_wsl():
-        # WSL detection
-        is_wsl = (
-            'microsoft' in platform.uname().release.lower() or
-            any(var in os.environ for var in ['WSL_DISTRO_NAME', 'WSL_INTEROP', 'WSLENV'])
-        )
+        # WSL detection - use environment variables only (safer)
+        is_wsl = any(var in os.environ for var in ['WSL_DISTRO_NAME', 'WSL_INTEROP', 'WSLENV'])
+        
+        # Alternative WSL detection via /proc/version if env vars not available
+        if not is_wsl:
+            try:
+                with open('/proc/version', 'r') as f:
+                    is_wsl = 'microsoft' in f.read().lower()
+            except (FileNotFoundError, PermissionError):
+                is_wsl = False
         
         # VSCode detection
         is_vscode = (
