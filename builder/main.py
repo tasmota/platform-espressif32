@@ -14,6 +14,7 @@
 
 import locale
 import os
+import platform
 import re
 import shlex
 import subprocess
@@ -569,7 +570,27 @@ else:
         env.Depends(target_firm, "checkprogsize")
 
 if terminal_cp == "utf-8":
-    metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng --no-color"$BUILD_DIR/${{PROGNAME}}.map"'
+    # Check if running in VSCode with WSL
+    def is_vscode_wsl():
+        # WSL detection
+        is_wsl = (
+            'microsoft' in platform.uname().release.lower() or
+            any(var in os.environ for var in ['WSL_DISTRO_NAME', 'WSL_INTEROP', 'WSLENV'])
+        )
+        
+        # VSCode detection
+        is_vscode = (
+            'VSCODE_INJECTION' in os.environ or
+            os.environ.get('TERM_PROGRAM') == 'vscode' or
+            any(var in os.environ for var in ['VSCODE_GIT_ASKPASS_NODE', 'VSCODE_IPC_HOOK_CLI'])
+        )
+        
+        return is_wsl and is_vscode
+    
+    # Build command with conditional --no-color flag
+    no_color_flag = " --no-color" if is_vscode_wsl() else ""
+    metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng{no_color_flag} "$BUILD_DIR/${{PROGNAME}}.map"'
+    
     silent_action = env.Action(metrics_cmd)
     silent_action.strfunction = lambda target, source, env: ""
     env.AddPostAction("checkprogsize", silent_action)
