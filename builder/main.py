@@ -569,7 +569,7 @@ else:
         env.Depends(target_firm, "checkprogsize")
 
 if terminal_cp == "utf-8":
-    metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng "$BUILD_DIR/${{PROGNAME}}.map"'
+    metrics_cmd = f'"{PYTHON_EXE}" -m esp_idf_size --ng --no-color"$BUILD_DIR/${{PROGNAME}}.map"'
     silent_action = env.Action(metrics_cmd)
     silent_action.strfunction = lambda target, source, env: ""
     env.AddPostAction("checkprogsize", silent_action)
