@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.util
 import locale
 import os
 import re
@@ -33,19 +34,49 @@ from SCons.Script import (
 from platformio.project.helpers import get_project_dir
 from platformio.util import get_serial_ports
 from platformio.compat import IS_WINDOWS
-from penv_setup import setup_python_environment
 
-# Initialize environment and configuration
+# Initialize SCons environment and project configuration
 env = DefaultEnvironment()
 platform = env.PioPlatform()
 projectconfig = env.GetProjectConfig()
 terminal_cp = locale.getpreferredencoding().lower()
-FRAMEWORK_DIR = platform.get_package_dir("framework-arduinoespressif32")
-platformio_dir = projectconfig.get("platformio", "core_dir")
+platform_dir = Path(env.PioPlatform().get_dir())
+framework_dir = platform.get_package_dir("framework-arduinoespressif32")
+core_dir = projectconfig.get("platformio", "core_dir")
+build_dir = Path(projectconfig.get("platformio", "build_dir"))
 
-# Setup Python virtual environment and get executable paths
-PYTHON_EXE, esptool_binary_path = setup_python_environment(env, platform, platformio_dir)
+# Configure Python environment through centralized platform management
+PYTHON_EXE, esptool_binary_path = platform.setup_python_env(env)
 
+# Load board configuration and determine MCU architecture
+board = env.BoardConfig()
+board_id = env.subst("$BOARD")
+mcu = board.get("build.mcu", "esp32")
+is_xtensa = mcu in ("esp32", "esp32s2", "esp32s3")
+toolchain_arch = "xtensa-%s" % mcu
+filesystem = board.get("build.filesystem", "littlefs")
+
+
+def load_board_script(env):
+    if not board_id:
+        return
+
+    script_path = platform_dir / "boards" / f"{board_id}.py"
+
+    if script_path.exists():
+        try:
+            spec = importlib.util.spec_from_file_location(
+                f"board_{board_id}", 
+                str(script_path)
+            )
+            board_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(board_module)
+
+            if hasattr(board_module, 'configure_board'):
+                board_module.configure_board(env)
+
+        except Exception as e:
+            print(f"Error loading board script {board_id}.py: {e}")
 
 def BeforeUpload(target, source, env):
     """
@@ -412,18 +443,14 @@ def switch_off_ldf():
         projectconfig.set(env_section, "lib_ldf_mode", "off")
 
 
-# Initialize board configuration and MCU settings
-board = env.BoardConfig()
-mcu = board.get("build.mcu", "esp32")
-is_xtensa = mcu in ("esp32", "esp32s2", "esp32s3")
-toolchain_arch = "xtensa-%s" % mcu
-filesystem = board.get("build.filesystem", "littlefs")
+# Board specific script
+load_board_script(env)
 
 # Set toolchain architecture for RISC-V based ESP32 variants
 if not is_xtensa:
     toolchain_arch = "riscv32-esp"
 
-# Initialize integration extra data if not present
+# Ensure integration extra data structure exists
 if "INTEGRATION_EXTRA_DATA" not in env:
     env["INTEGRATION_EXTRA_DATA"] = {}
 
@@ -433,7 +460,7 @@ uploader_path = (
     if ' ' in esptool_binary_path 
     else esptool_binary_path
 )
-# Configure build tools and environment variables
+# Configure SCons build tools and compiler settings
 env.Replace(
     __get_board_boot_mode=_get_board_boot_mode,
     __get_board_f_flash=_get_board_f_flash,
@@ -595,7 +622,7 @@ def firmware_metrics(target, source, env):
         if env.GetProjectOption("custom_esp_idf_size_verbose", False):
             print(f"Running command: {' '.join(cmd)}")
         
-        # Call esp-idf-size with modified environment
+        # Execute esp-idf-size with current environment
         result = subprocess.run(cmd, check=False, capture_output=False, env=os.environ)
         
         if result.returncode != 0:
@@ -692,7 +719,7 @@ if upload_protocol == "espota":
             "espressif32.html#over-the-air-ota-update\n"
         )
     env.Replace(
-        UPLOADER=str(Path(FRAMEWORK_DIR).resolve() / "tools" / "espota.py"),
+        UPLOADER=str(Path(framework_dir).resolve() / "tools" / "espota.py"),
         UPLOADERFLAGS=["--debug", "--progress", "-i", "$UPLOAD_PORT"],
         UPLOADCMD=f'"{PYTHON_EXE}" "$UPLOADER" $UPLOADERFLAGS -f $SOURCE',
     )
