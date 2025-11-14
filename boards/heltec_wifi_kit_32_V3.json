@@ -1,7 +1,6 @@
 {
   "build": {
     "arduino": {
-      "ldscript": "esp32s3_out.ld",
       "partitions": "default_8MB.csv"
     },
     "core": "esp32",
@@ -21,7 +20,7 @@
       ]
     ],
     "mcu": "esp32s3",
-    "variant": "heltec_wifi_kit_32_v3"
+    "variant": "heltec_wifi_kit_32_V3"
   },
   "connectivity": [
     "wifi",

@@ -12,11 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python Version Check
+import sys
+
+if not ((3, 10) <= sys.version_info < (3, 14)):
+    print("ERROR: Python version must be between 3.10 and 3.13.", file=sys.stderr)
+    print(f"Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", file=sys.stderr)
+    print("Supported versions: 3.10, 3.11, 3.12, 3.13", file=sys.stderr)
+    raise SystemExit(1)
+
 # LZMA support check
 try:
     import lzma as _lzma
 except ImportError:
-    import sys
     print("ERROR: Python's lzma module is unavailable or broken in this interpreter.", file=sys.stderr)
     print("LZMA (liblzma) support is required for tool/toolchain installation.", file=sys.stderr)
     print("Please install Python built with LZMA support.", file=sys.stderr)
@@ -34,7 +42,6 @@ import requests
 import shutil
 import socket
 import subprocess
-import sys
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Union
 
@@ -646,6 +653,38 @@ class Espressif32Platform(PlatformBase):
         for package in COMMON_IDF_PACKAGES:
             self.install_tool(package)
 
+    def _check_exception_decoder_filter(self, variables: Dict) -> bool:
+        """
+        Check if esp32_exception_decoder filter is configured in monitor_filters.
+        
+        Args:
+            variables: Build configuration variables from platformio.ini
+            
+        Returns:
+            bool: True if esp32_exception_decoder is configured, False otherwise
+        """
+        monitor_filters = variables.get("monitor_filters", [])
+        
+        # Handle both list and string formats
+        if isinstance(monitor_filters, str):
+            monitor_filters = [f.strip() for f in monitor_filters.split(",")]
+        
+        return "esp32_exception_decoder" in monitor_filters
+
+    def _configure_rom_elfs_for_exception_decoder(self, variables: Dict) -> None:
+        """
+        Install tool-esp-rom-elfs if esp32_exception_decoder filter is enabled.
+        
+        The ESP32 exception decoder requires ROM ELF files to decode addresses
+        from ROM code regions in crash backtraces.
+        
+        Args:
+            variables: Build configuration variables from platformio.ini
+        """
+        if self._check_exception_decoder_filter(variables):
+            logger.info("esp32_exception_decoder filter detected, installing tool-esp-rom-elfs")
+            self.install_tool("tool-esp-rom-elfs")
+
     def _configure_check_tools(self, variables: Dict) -> None:
         """Configure static analysis and check tools based on configuration."""
         check_tools = variables.get("check_tool", [])
@@ -770,6 +809,7 @@ class Espressif32Platform(PlatformBase):
             if "espidf" in frameworks:
                 self._install_common_idf_packages()
 
+            self._configure_rom_elfs_for_exception_decoder(variables)
             self._configure_check_tools(variables)
             self._configure_filesystem_tools(variables, targets)
 

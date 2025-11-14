@@ -1,22 +1,27 @@
 [![Build_special_firmware](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
 
 
-# Tasmota Espressif 32: development platform for [PlatformIO](http://platformio.org)
+# Tasmota Espressif 32 platform
 
 [![Examples](https://github.com/Jason2866/platform-espressif32/actions/workflows/examples.yml/badge.svg)](https://github.com/Jason2866/platform-espressif32/actions/workflows/examples.yml)[![GitHub Releases](https://img.shields.io/github/downloads/tasmota/platform-espressif32/total?label=downloads)](https://github.com/tasmota/platform-espressif32/releases/latest)
 
 Espressif Systems is a privately held, fabless semiconductor company renowned for delivering cost-effective wireless communication microcontrollers. Their innovative solutions are widely adopted in mobile devices and Internet of Things (IoT) applications around the globe.
 
-# Usage
+## Installation
+- [Download and install Microsoft Visual Studio Code](https://code.visualstudio.com/). pioarduino IDE is on top of it.
+- Open the extension manager.
+- Search for the `pioarduino ide` extension.
+- Install pioarduino IDE extension.
 
-1. [Install PlatformIO](http://platformio.org)
-2. Create PlatformIO project and configure a platform option in [platformio.ini](http://docs.platformio.org/page/projectconf.html) file:
+## Usage
+1. Setup new VSCode pioarduino project.
+1. Check the `platform` setting in platformio.ini file:
 
-## Tasmota release Arduino 3.1.4 and IDF 5.3.4
+## Tasmota release Arduino 3.1.5 and IDF 5.3.4.251110
 Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3 and ESP32-H2
 ```
 [platformio]
-platform = https://github.com/tasmota/platform-espressif32/releases/download/2025.10.30/platform-espressif32.zip
+platform = https://github.com/tasmota/platform-espressif32/releases/download/2025.11.30/platform-espressif32.zip
 framework = arduino
 ```
 ## Hybrid compile: Build customized Arduino IDF libraries

@@ -22,9 +22,9 @@ import os
 import shutil
 import re
 import yaml
-from yaml import SafeLoader
 from pathlib import Path
 from typing import Set, Optional, Dict, Any, List, Tuple, Pattern
+from yaml import SafeLoader
 
 
 class ComponentManagerConfig:
@@ -57,7 +57,7 @@ class ComponentManagerConfig:
         self.mcu = self.board.get("build.mcu", "esp32").lower()
         # Get project source directory path
         self.project_src_dir = env.subst("$PROJECT_SRC_DIR")
-        
+
         # Check if lib_ignore processing should be enabled (disabled by default)
         custom_remove_include_value = env.GetProjectOption("custom_remove_include", False)
         self.custom_remove_include = str(custom_remove_include_value).lower() in ('true', '1', 'yes', 'on')
@@ -268,7 +268,7 @@ class ComponentHandler:
         Returns:
             Absolute path to the component YAML file
         """
-        # Try Arduino framework first
+        # Check Arduino framework directory first
         afd = self.config.arduino_framework_dir
         framework_yml = str(Path(afd) / "idf_component.yml") if afd else ""
         if framework_yml and os.path.exists(framework_yml):
