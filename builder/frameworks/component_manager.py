@@ -55,6 +55,8 @@ class ComponentManagerConfig:
         self.board = env.BoardConfig()
         # Extract MCU type from board configuration, defaulting to esp32
         self.mcu = self.board.get("build.mcu", "esp32").lower()
+        chip_variant = self.board.get("build.chip_variant", "").lower()
+        self.chip_variant = chip_variant if chip_variant else self.mcu
         # Get project source directory path
         self.project_src_dir = env.subst("$PROJECT_SRC_DIR")
 
@@ -89,7 +91,7 @@ class ComponentManagerConfig:
         if self._arduino_libs_mcu is None:
             afd = self.arduino_framework_dir
             self._arduino_libs_mcu = (
-                str(Path(afd) / "tools" / "esp32-arduino-libs" / self.mcu) if afd else ""
+                str(Path(afd) / "tools" / "esp32-arduino-libs" / self.chip_variant) if afd else ""
             )
         return self._arduino_libs_mcu
 

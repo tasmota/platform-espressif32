@@ -77,6 +77,8 @@ os.environ["IDF_COMPONENT_OVERWRITE_MANAGED_COMPONENTS"] = "1"
 config = env.GetProjectConfig()
 board = env.BoardConfig()
 mcu = board.get("build.mcu", "esp32")
+chip_variant = board.get("build.chip_variant", "").lower()
+chip_variant = chip_variant if chip_variant else mcu
 flash_speed = board.get("build.f_flash", "40000000L")
 flash_frequency = str(flash_speed.replace("000000L", ""))
 flash_mode = board.get("build.flash_mode", "dio")
@@ -170,7 +172,7 @@ if "arduino" in env.subst("$PIOFRAMEWORK"):
     if not ARDUINO_FRAMEWORK_DIR or not os.path.isdir(ARDUINO_FRAMEWORK_DIR):
         sys.stderr.write(f"Error: Arduino framework directory not found: {ARDUINO_FRAMEWORK_DIR}\n")
         env.Exit(1)
-    arduino_libs_mcu = str(ARDUINO_FRAMEWORK_DIR_PATH / "tools" / "esp32-arduino-libs" / mcu)
+    arduino_libs_mcu = str(ARDUINO_FRAMEWORK_DIR_PATH / "tools" / "esp32-arduino-libs" / chip_variant)
 
 BUILD_DIR = env.subst("$BUILD_DIR")
 PROJECT_DIR = env.subst("$PROJECT_DIR")
@@ -659,7 +661,7 @@ def HandleArduinoIDFsettings(env):
             print("Error: Arduino framework required for sdkconfig processing")
             return
         """Write the final sdkconfig.defaults file with checksum."""
-        sdkconfig_src = str(Path(ARDUINO_FRAMEWORK_DIR) / "tools" / "esp32-arduino-libs" / mcu / "sdkconfig")
+        sdkconfig_src = str(Path(ARDUINO_FRAMEWORK_DIR) / "tools" / "esp32-arduino-libs" / chip_variant / "sdkconfig")
         sdkconfig_dst = str(Path(PROJECT_DIR) / "sdkconfig.defaults")
         if not os.path.isfile(sdkconfig_src):
             sys.stderr.write(f"Error: Missing Arduino sdkconfig template at '{sdkconfig_src}'\n")
@@ -2566,24 +2568,24 @@ if os.path.isdir(ulp_dir) and os.listdir(ulp_dir) and mcu not in ("esp32c2", "es
 
 if ("arduino" in env.subst("$PIOFRAMEWORK")) and ("espidf" not in env.subst("$PIOFRAMEWORK")):
     def idf_lib_copy(source, target, env):
-        def _replace_move(src, dst):
+        def _replace_copy(src, dst):
             dst_p = Path(dst)
             dst_p.parent.mkdir(parents=True, exist_ok=True)
             try:
-                os.remove(dst)
-            except FileNotFoundError:
+                shutil.copy2(src, dst)
+            except (OSError, IOError):
+                # Gracefully handle missing source files (e.g., PSRAM libs in non-PSRAM builds)
+                # This is expected when copying variant-specific libraries
                 pass
-            try:
-                os.replace(src, dst)
-            except OSError:
-                shutil.move(src, dst)
+            except Exception as e:
+                print(f"Warning: Failed to copy {src} to {dst}: {e}")
         env_build = str(Path(env["PROJECT_BUILD_DIR"]) / env["PIOENV"])
         sdkconfig_h_path = str(Path(env_build) / "config" / "sdkconfig.h")
         arduino_libs = str(Path(ARDUINO_FRAMEWORK_DIR) / "tools" / "esp32-arduino-libs")
         lib_src = str(Path(env_build) / "esp-idf")
-        lib_dst = str(Path(arduino_libs) / mcu / "lib")
-        ld_dst = str(Path(arduino_libs) / mcu / "ld")
-        mem_var = str(Path(arduino_libs) / mcu / (board.get("build.arduino.memory_type", (board.get("build.flash_mode", "dio") + "_qspi")) + ("_" + board.get("build.f_boot", board.get("build.f_flash", "80000000L")).replace("000000L", "m") if mcu == "esp32s3" else "")))
+        lib_dst = str(Path(arduino_libs) / chip_variant / "lib")
+        ld_dst = str(Path(arduino_libs) / chip_variant / "ld")
+        mem_var = str(Path(arduino_libs) / chip_variant / (board.get("build.arduino.memory_type", (board.get("build.flash_mode", "dio") + "_qspi")) + ("_" + board.get("build.f_boot", board.get("build.f_flash", "80000000L")).replace("000000L", "m") if mcu == "esp32s3" else "")))
         # Ensure destinations exist
         for d in (lib_dst, ld_dst, mem_var, str(Path(mem_var) / "include")):
             Path(d).mkdir(parents=True, exist_ok=True)
@@ -2595,22 +2597,25 @@ if ("arduino" in env.subst("$PIOFRAMEWORK")) and ("espidf" not in env.subst("$PI
                 if file.strip().endswith(".a"):
                     shutil.copyfile(file, str(Path(lib_dst) / file.split(os.path.sep)[-1]))
 
-        _replace_move(str(Path(lib_dst) / "libspi_flash.a"), str(Path(mem_var) / "libspi_flash.a"))
-        _replace_move(str(Path(env_build) / "memory.ld"), str(Path(ld_dst) / "memory.ld"))
+        _replace_copy(str(Path(lib_dst) / "libspi_flash.a"), str(Path(mem_var) / "libspi_flash.a"))
+        _replace_copy(str(Path(env_build) / "memory.ld"), str(Path(ld_dst) / "memory.ld"))
         if mcu == "esp32s3":
-            _replace_move(str(Path(lib_dst) / "libesp_psram.a"), str(Path(mem_var) / "libesp_psram.a"))
-            _replace_move(str(Path(lib_dst) / "libesp_system.a"), str(Path(mem_var) / "libesp_system.a"))
-            _replace_move(str(Path(lib_dst) / "libfreertos.a"), str(Path(mem_var) / "libfreertos.a"))
-            _replace_move(str(Path(lib_dst) / "libbootloader_support.a"), str(Path(mem_var) / "libbootloader_support.a"))
-            _replace_move(str(Path(lib_dst) / "libesp_hw_support.a"), str(Path(mem_var) / "libesp_hw_support.a"))
-            _replace_move(str(Path(lib_dst) / "libesp_lcd.a"), str(Path(mem_var) / "libesp_lcd.a"))
+            _replace_copy(str(Path(lib_dst) / "libesp_psram.a"), str(Path(mem_var) / "libesp_psram.a"))
+            _replace_copy(str(Path(lib_dst) / "libesp_system.a"), str(Path(mem_var) / "libesp_system.a"))
+            _replace_copy(str(Path(lib_dst) / "libfreertos.a"), str(Path(mem_var) / "libfreertos.a"))
+            _replace_copy(str(Path(lib_dst) / "libbootloader_support.a"), str(Path(mem_var) / "libbootloader_support.a"))
+            _replace_copy(str(Path(lib_dst) / "libesp_hw_support.a"), str(Path(mem_var) / "libesp_hw_support.a"))
+            _replace_copy(str(Path(lib_dst) / "libesp_lcd.a"), str(Path(mem_var) / "libesp_lcd.a"))
 
         shutil.copyfile(sdkconfig_h_path, str(Path(mem_var) / "include" / "sdkconfig.h"))
-        if not bool(os.path.isfile(str(Path(arduino_libs) / mcu / "sdkconfig.orig"))):
-            shutil.move(str(Path(arduino_libs) / mcu / "sdkconfig"), str(Path(arduino_libs) / mcu / "sdkconfig.orig"))
-        shutil.copyfile(str(Path(env.subst("$PROJECT_DIR")) / ("sdkconfig." + env["PIOENV"])), str(Path(arduino_libs) / mcu / "sdkconfig"))
+        if not bool(os.path.isfile(str(Path(arduino_libs) / chip_variant / "sdkconfig.orig"))):
+            shutil.move(str(Path(arduino_libs) / chip_variant / "sdkconfig"), str(Path(arduino_libs) / chip_variant / "sdkconfig.orig"))
+        shutil.copyfile(str(Path(env.subst("$PROJECT_DIR")) / ("sdkconfig." + env["PIOENV"])), str(Path(arduino_libs) / chip_variant / "sdkconfig"))
         shutil.copyfile(str(Path(env.subst("$PROJECT_DIR")) / ("sdkconfig." + env["PIOENV"])), str(Path(arduino_libs) / "sdkconfig"))
         try:
+            # clean env build folder to avoid issues with following Arduino build
+            shutil.rmtree(env_build)
+            Path(env_build).mkdir(parents=True, exist_ok=True)
             os.remove(str(Path(env.subst("$PROJECT_DIR")) / "dependencies.lock"))
             os.remove(str(Path(env.subst("$PROJECT_DIR")) / "CMakeLists.txt"))
         except FileNotFoundError:

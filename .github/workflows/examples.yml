@@ -1,4 +1,4 @@
-name: Examples
+name: CI Examples
 
 on:
   workflow_dispatch:      # Manually start a workflow
@@ -16,9 +16,11 @@ jobs:
         example:
           - "examples/arduino-blink"
           - "examples/arduino-rmt-blink"
+          - "examples/arduino-usb-keyboard"
           - "examples/arduino-wifiscan"
           - "examples/espidf-arduino-blink"
           - "examples/espidf-arduino-littlefs"
+          - "examples/espidf-arduino-C6-ULP-blink"
           - "examples/espidf-blink"
           - "examples/espidf-coap-server"
           - "examples/espidf-exceptions"
@@ -29,12 +31,17 @@ jobs:
           - "examples/espidf-storage-sdcard"
           - "examples/espidf-ulp"
           - "examples/espidf-ulp-riscv"
+          - "examples/espidf-ulp-lp"
           - "examples/tasmota"
         exclude:
           - os: windows-latest
             example: "examples/espidf-ulp"
           - os: windows-latest
+            example: "examples/espidf-ulp-lp"
+          - os: windows-latest
             example: "examples/espidf-ulp-riscv"
+          - os: windows-latest
+            example: "examples/espidf-arduino-C6-ULP-blink"
           - os: windows-latest
             example: "examples/tasmota"
     runs-on: ${{ matrix.os }}
@@ -64,5 +71,4 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: '1'
-        run: |
-          pio run -d ${{ matrix.example }}
+        run: pio run -d ${{ matrix.example }}
