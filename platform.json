@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2025.11.31",
+  "version": "2025.12.30",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,13 +33,13 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.6/framework-arduinoespressif32.tar.xz"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.7/framework-arduinoespressif32.tar.xz"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.4.251110-gcc15/esp-idf-v5.3.4.tar.xz"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.5.1.251205/esp-idf-v5.5.1.tar.xz"
     },
     "toolchain-xtensa-esp-elf": {
       "type": "toolchain",
@@ -87,8 +87,8 @@
       "type": "tool",
       "optional": false,
       "owner": "pioarduino",
-      "package-version": "5.3.2",
-      "version": "https://github.com/pioarduino/esp_install/releases/download/v5.3.2/esp_install-v5.3.2.zip"
+      "package-version": "5.3.4",
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.7/framework-arduinoespressif32.tar.xz"
     },
       "contrib-piohome": {
       "optional": true,
