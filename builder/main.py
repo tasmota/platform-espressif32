@@ -17,10 +17,12 @@ import locale
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from os.path import isfile, join
 from pathlib import Path
+from littlefs import LittleFS
 
 from SCons.Script import (
     ARGUMENTS,
@@ -414,6 +416,105 @@ def __fetch_fs_size(target, source, env):
     return (target, source)
 
 
+def build_fs_image(target, source, env):
+    """
+    Build filesystem image using littlefs-python.
+
+    Args:
+        target: SCons target (output .bin file)
+        source: SCons source (directory with files)
+        env: SCons environment object
+
+    Returns:
+        int: 0 on success, 1 on failure
+    """
+
+    # Get parameters
+    source_dir = str(source[0])
+    target_file = str(target[0])
+    fs_size = env["FS_SIZE"]
+    block_size = env.get("FS_BLOCK", 4096)
+
+    # Calculate block count
+    block_count = fs_size // block_size
+
+    # Get disk version from board config or project options
+    # Default to LittleFS version 2.1 (0x00020001)
+    disk_version_str = "2.1"
+    
+    # Try to read from project config (env-specific or common section)
+    for section in ["env:" + env["PIOENV"], "common"]:
+        if projectconfig.has_option(section, "board_build.littlefs_version"):
+            disk_version_str = projectconfig.get(section, "board_build.littlefs_version")
+            break
+    
+    # Parse version string and create proper version integer
+    # LittleFS version format: (major << 16) | (minor << 0)
+    try:
+        version_parts = str(disk_version_str).split(".")
+        major = int(version_parts[0])
+        minor = int(version_parts[1]) if len(version_parts) > 1 else 0
+        # Format: major in upper 16 bits, minor in lower 16 bits
+        disk_version = (major << 16) | minor
+    except (ValueError, IndexError):
+        print(f"Warning: Invalid littlefs version '{disk_version_str}', using default 2.1")
+        disk_version = (2 << 16) | 1
+
+    try:
+        # Create LittleFS instance with Arduino / IDF compatible parameters
+        fs = LittleFS(
+            block_size=block_size,
+            block_count=block_count,
+            read_size=1,              # Minimum read size
+            prog_size=1,              # Minimum program size
+            cache_size=block_size,    # Cache size = block size
+            lookahead_size=32,        # Default lookahead buffer
+            block_cycles=500,         # Wear leveling cycles
+            name_max=64,              # ESP-IDF default filename length
+            disk_version=disk_version,
+            mount=True
+        )
+
+        # Add all files from source directory
+        source_path = Path(source_dir)
+        if source_path.exists():
+            for item in source_path.rglob("*"):
+                rel_path = item.relative_to(source_path)
+                fs_path = rel_path.as_posix()
+                
+                if item.is_dir():
+                    fs.makedirs(fs_path, exist_ok=True)
+                    # Set directory mtime attribute
+                    try:
+                        mtime = int(item.stat().st_mtime)
+                        fs.setattr(fs_path, 't', mtime.to_bytes(4, 'little'))
+                    except Exception:
+                        pass  # Ignore timestamp errors
+                else:
+                    # Ensure parent directories exist
+                    if rel_path.parent != Path("."):
+                        fs.makedirs(rel_path.parent.as_posix(), exist_ok=True)
+                    # Copy file
+                    with fs.open(fs_path, "wb") as dest:
+                        dest.write(item.read_bytes())
+                    # Set file mtime attribute (ESP-IDF compatible)
+                    try:
+                        mtime = int(item.stat().st_mtime)
+                        fs.setattr(fs_path, 't', mtime.to_bytes(4, 'little'))
+                    except Exception:
+                        pass  # Ignore timestamp errors
+
+        # Write filesystem image
+        with open(target_file, "wb") as f:
+            f.write(fs.context.buffer)
+
+        return 0
+
+    except Exception as e:
+        print(f"Error building filesystem image: {e}")
+        return 1
+
+
 def check_lib_archive_exists():
     """
     Check if lib_archive is set in platformio.ini configuration.
@@ -429,12 +530,12 @@ def check_lib_archive_exists():
 
 def switch_off_ldf():
     """
-    Disables LDF (Library Dependency Finder) for uploadfs, uploadfsota, and buildfs targets.
+    Disables LDF (Library Dependency Finder) for uploadfs, uploadfsota, buildfs, download_littlefs, and erase targets.
 
     This optimization prevents unnecessary library dependency scanning and compilation
     when only filesystem operations are performed.
     """
-    fs_targets = {"uploadfs", "uploadfsota", "buildfs", "erase"}
+    fs_targets = {"uploadfs", "uploadfsota", "buildfs", "erase", "download_littlefs"}
     if fs_targets & set(COMMAND_LINE_TARGETS):
         # Disable LDF by modifying project configuration directly
         env_section = "env:" + env["PIOENV"]
@@ -545,11 +646,11 @@ env.Append(
         ),
         DataToBin=Builder(
             action=env.VerboseAction(
-                " ".join(
+                build_fs_image if filesystem == "littlefs" else " ".join(
                     ['"$MKFSTOOL"', "-c", "$SOURCES", "-s", "$FS_SIZE"]
                     + (
                         ["-p", "$FS_PAGE", "-b", "$FS_BLOCK"]
-                        if filesystem in ("littlefs", "spiffs")
+                        if filesystem == "spiffs"
                         else []
                     )
                     + ["$TARGET"]
@@ -761,6 +862,197 @@ def coredump_analysis(target, source, env):
     except Exception as e:
         print(f"Error: Failed to run coredump analysis: {e}")
         print(f'Make sure esp-coredump is installed: uv pip install --python "{PYTHON_EXE}" esp-coredump')
+
+
+def download_littlefs(target, source, env):
+    """
+    Download Little filesystem from device and extract to directory.
+    Only supports LittleFS filesystem.
+    Usage: pio run -e <env> -t download_littlefs
+    
+    Args:
+        target: SCons target
+        source: SCons source
+        env: SCons environment object
+    """
+    # Get unpack directory from board config or use default
+    unpack_dir = "unpacked_fs"
+    
+    # Read from project config (env-specific or common section)
+    for section in ["env:" + env["PIOENV"], "common"]:
+        if projectconfig.has_option(section, "board_build.unpack_dir"):
+            unpack_dir = projectconfig.get(section, "board_build.unpack_dir")
+            break
+    
+    # Ensure upload port is set
+    if not env.subst("$UPLOAD_PORT"):
+        env.AutodetectUploadPort()
+    
+    upload_port = env.subst("$UPLOAD_PORT")
+    download_speed = board.get("download.speed", "115200")
+    
+    # Download partition table from device
+    print(f"Downloading partition table from {upload_port}...")
+    
+    build_dir = Path(env.subst("$BUILD_DIR"))
+    build_dir.mkdir(parents=True, exist_ok=True)
+    partition_file = build_dir / "partition_table_from_flash.bin"
+    
+    esptool_cmd = [
+        uploader_path.strip('"'),
+        "--chip", mcu,
+        "--port", upload_port,
+        "--baud", str(download_speed),
+        "--before", "default-reset",
+        "--after", "hard-reset",
+        "read-flash",
+        "0x8000",  # Partition table offset
+        "0x1000",  # Partition table size (4KB)
+        str(partition_file)
+    ]
+    
+    try:
+        result = subprocess.run(esptool_cmd, check=False)
+        if result.returncode != 0:
+            print("Error: Failed to download partition table")
+            return 1
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+    
+    # Parse partition table to find filesystem partition
+    print("Parsing partition table...")
+    
+    with open(partition_file, 'rb') as f:
+        partition_data = f.read()
+    
+    # Parse partition entries (format: 0xAA 0x50 followed by entry data)
+    entries = [e for e in partition_data.split(b'\xaaP') if len(e) > 0]
+    
+    fs_start = None
+    fs_size = None
+    fs_subtype = None
+    
+    for entry in entries:
+        if len(entry) < 32:
+            continue
+        
+        # Byte 0: Type (0x01 for data partitions)
+        # Byte 1: SubType (0x82=SPIFFS, 0x83=LittleFS)
+        # Bytes 2-5: Offset (4 bytes, little-endian)
+        # Bytes 6-9: Size (4 bytes, little-endian)
+        
+        part_subtype = entry[1]
+        
+        # Check for SPIFFS (0x82) or LITTLEFS (0x83)
+        if part_subtype in [0x82, 0x83]:
+            fs_start = int.from_bytes(entry[2:6], byteorder='little', signed=False)
+            fs_size = int.from_bytes(entry[6:10], byteorder='little', signed=False)
+            fs_subtype = part_subtype
+            break
+    
+    if fs_start is None or fs_size is None:
+        print("Error: No filesystem partition found in partition table")
+        return 1
+
+    block_size = 0x1000  # 4KB
+    
+    print(f"Found filesystem partition (subtype {hex(fs_subtype)}):")
+    print(f"  Start: {hex(fs_start)}")
+    print(f"  Size: {hex(fs_size)} ({fs_size} bytes)")
+    print(f"  Block size: {hex(block_size)}")
+    print("Note: This tool only supports LittleFS extraction")
+    
+    # Download filesystem image
+    fs_file = build_dir / f"downloaded_fs_{hex(fs_start)}_{hex(fs_size)}.bin"
+    
+    print("\nDownloading filesystem from device...")
+    
+    esptool_cmd = [
+        uploader_path.strip('"'),
+        "--chip", mcu,
+        "--port", upload_port,
+        "--baud", str(download_speed),
+        "--before", "default-reset",
+        "--after", "hard-reset",
+        "read-flash",
+        hex(fs_start),
+        hex(fs_size),
+        str(fs_file)
+    ]
+    
+    try:
+        result = subprocess.run(esptool_cmd, check=False)
+        if result.returncode != 0:
+            print(f"Error: Download failed with code {result.returncode}")
+            return 1
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+    
+    print(f"Downloaded to {fs_file}")
+    
+    # Extract filesystem
+    print(f"\nExtracting LittleFS filesystem to {unpack_dir}...")
+    
+    # Remove old unpack directory
+    unpack_path = Path(get_project_dir()) / unpack_dir
+    if unpack_path.exists():
+        shutil.rmtree(unpack_path)
+    unpack_path.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Read the downloaded filesystem image
+        with open(fs_file, 'rb') as f:
+            fs_data = f.read()
+        
+        # Calculate block count
+        block_count = fs_size // block_size
+        
+        # Create LittleFS instance and mount the image
+        fs = LittleFS(
+            block_size=block_size,
+            block_count=block_count,
+            mount=False
+        )
+        fs.context.buffer = bytearray(fs_data)
+        fs.mount()
+        
+        # Extract all files
+        file_count = 0
+        print("\nExtracted files:")
+        for root, dirs, files in fs.walk("/"):
+            if not root.endswith("/"):
+                root += "/"
+            
+            # Create directories
+            for dir_name in dirs:
+                src_path = root + dir_name
+                dst_path = unpack_path / src_path[1:]  # Remove leading '/'
+                dst_path.mkdir(parents=True, exist_ok=True)
+                print(f"  [DIR]  {src_path}")
+            
+            # Extract files
+            for file_name in files:
+                src_path = root + file_name
+                dst_path = unpack_path / src_path[1:]  # Remove leading '/'
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with fs.open(src_path, "rb") as src:
+                    file_data = src.read()
+                    dst_path.write_bytes(file_data)
+                
+                print(f"  [FILE] {src_path} ({len(file_data)} bytes)")
+                file_count += 1
+        
+        fs.unmount()
+        print(f"\nSuccessfully extracted {file_count} file(s) to {unpack_dir}")
+        return 0
+        
+    except Exception as e:
+        print(f"Error: Failed to extract LittleFS filesystem: {e}")
+        print("No support for other filesystems than LittleFS!")
+        return 1
 
 #
 # Target: Build executable and linkable firmware or FS image
@@ -976,6 +1268,14 @@ env.AddPlatformTarget(
     target_firm,
     upload_actions,
     "Upload Filesystem Image OTA",
+)
+
+# Target: Download LittleFS (no build required)
+env.AddPlatformTarget(
+    "download_littlefs",
+    None,
+    download_littlefs,
+    "Download and extract LittleFS filesystem from device",
 )
 
 # Target: Erase Flash and Upload
