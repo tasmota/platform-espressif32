@@ -444,6 +444,16 @@ def HandleArduinoIDFsettings(env):
             # Note: f_boot is NOT used for P4 as it affects bootloader filename
             flash_compile_freq = f_flash
             psram_compile_freq = f_psram if f_psram else f_flash
+            
+            if chip_variant == "esp32p4_es":
+                print(f"Info: Detected ESP32-P4 ES variant, applying revision-based compatibility flags")
+                board_config_flags.append("CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y")
+                board_config_flags.append("# CONFIG_ESP32P4_REV_MIN_0 is not set")
+                board_config_flags.append("CONFIG_ESP32P4_REV_MIN_1=y")
+                board_config_flags.append("# CONFIG_ESP32P4_REV_MIN_100 is not set")
+                board_config_flags.append("CONFIG_ESP32P4_REV_MIN_FULL=1")
+                board_config_flags.append("CONFIG_ESP_REV_MIN_FULL=1")
+
         else:
             # Other chips: f_boot overrides f_flash for compile-time (both Flash and PSRAM)
             compile_freq = f_boot if f_boot else f_flash
@@ -1325,13 +1335,22 @@ def generate_project_ld_script(sdk_config, ignore_targets=None):
         '--objdump "{objdump}"'
     ).format(**args)
 
-    initial_ld_script = str(Path(FRAMEWORK_DIR) / "components" / "esp_system" / "ld" / idf_variant / "sections.ld.in")
+    # Select appropriate linker script based on chip and revision
+    # ESP32-P4 has different linker scripts for rev < 3 and rev >= 3
+    if idf_variant == "esp32p4" and chip_variant == "esp32p4":
+        # Regular ESP32-P4 (rev >= 3): use sections.rev3.ld.in
+        linker_script_name = "sections.rev3.ld.in"
+    else:
+        # ESP32-P4 ES variant (rev < 3) or other chips: use sections.ld.in
+        linker_script_name = "sections.ld.in"
+    
+    initial_ld_script = str(Path(FRAMEWORK_DIR) / "components" / "esp_system" / "ld" / idf_variant / linker_script_name)
 
     framework_version_list = [int(v) for v in get_framework_version().split(".")]
     if framework_version_list[:2] > [5, 2]:
         initial_ld_script = preprocess_linker_file(
             initial_ld_script,
-            str(Path(BUILD_DIR) / "esp-idf" / "esp_system" / "ld" / "sections.ld.in"),
+            str(Path(BUILD_DIR) / "esp-idf" / "esp_system" / "ld" / linker_script_name),
         )
 
     return env.Command(
@@ -1658,12 +1677,10 @@ def build_bootloader(sdk_config):
                     bootloader_script_in_path = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject" / "main" / "ld" / idf_variant / script_name_in)
                     
                     # ESP32-P4 specific: Check for bootloader.rev3.ld.in
-                    if idf_variant == "esp32p4" and script_basename == "bootloader.ld":
-                        sdk_config = get_sdk_configuration()
-                        if sdk_config.get("ESP32P4_REV_MIN_300", False):
-                            bootloader_rev3_path = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject" / "main" / "ld" / idf_variant / "bootloader.rev3.ld.in")
-                            if os.path.isfile(bootloader_rev3_path):
-                                bootloader_script_in_path = bootloader_rev3_path
+                    if idf_variant == "esp32p4" and chip_variant == "esp32p4":
+                        bootloader_rev3_path = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject" / "main" / "ld" / idf_variant / "bootloader.rev3.ld.in")
+                        if os.path.isfile(bootloader_rev3_path):
+                            bootloader_script_in_path = bootloader_rev3_path
                     
                     # Preprocess the .ld.in template to generate the .ld file
                     if os.path.isfile(bootloader_script_in_path):
@@ -2720,18 +2737,6 @@ if ota_partition_params["size"] and ota_partition_params["offset"]:
         env.Append(
              FLASH_EXTRA_IMAGES=[(offset, str(extra_img_dir / img)) for offset, img in extra_imgs]
         )
-
-def _parse_size(value):
-    if isinstance(value, int):
-        return value
-    elif value.isdigit():
-        return int(value)
-    elif value.startswith("0x"):
-        return int(value, 16)
-    elif value[-1].upper() in ("K", "M"):
-        base = 1024 if value[-1].upper() == "K" else 1024 * 1024
-        return int(value[:-1]) * base
-    return value
 
 #
 # Configure application partition offset

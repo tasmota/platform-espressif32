@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2026.01.30",
+  "version": "2026.02.30",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,13 +33,13 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.9/framework-arduinoespressif32.tar.xz"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.1.10/framework-arduinoespressif32.tar.xz"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.4.251226/esp-idf-v5.3.4.tar.xz"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.3.4.260127/esp-idf-v5.3.4.tar.xz"
     },
     "toolchain-xtensa-esp-elf": {
       "type": "toolchain",
