@@ -23,7 +23,7 @@
     "arduino",
     "espidf"
   ],
-  "name": "Espressif ESP32-P4 generic",
+  "name": "Espressif ESP32-P4 ES (pre rev.300) generic",
   "upload": {
     "flash_size": "4MB",
     "maximum_ram_size": 327680,

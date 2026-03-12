@@ -8,7 +8,7 @@ on:
 jobs:
   release_zips:
     name: Create release zip file
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Create a recursive clone source zip
         uses: jason2866/github-actions/release_zips@release_idf

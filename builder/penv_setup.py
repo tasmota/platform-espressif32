@@ -59,13 +59,15 @@ python_deps = {
     "bitstring": ">=4.3.1",
     "reedsolo": ">=1.5.3,<1.8",
     "esp-idf-size": ">=2.0.0",
-    "esp-coredump": ">=1.14.0"
+    "esp-coredump": ">=1.14.0",
+    "pyelftools": ">=0.32"
 }
 
 
 def has_internet_connection(timeout=5):
     """
     Checks practical internet reachability for dependency installation.
+    Can be overridden by setting PLATFORMIO_OFFLINE=1 environment variable.
     1) If HTTPS/HTTP proxy environment variable is set, test TCP connectivity to the proxy endpoint.
     2) Otherwise, test direct TCP connectivity to common HTTPS endpoints (port 443).
     
@@ -75,6 +77,10 @@ def has_internet_connection(timeout=5):
     Returns:
         True if at least one path appears reachable; otherwise False.
     """
+    # Check if offline mode is forced via environment variable
+    if os.getenv("PLATFORMIO_OFFLINE", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    
     # 1) Test TCP connectivity to the proxy endpoint.
     proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
     if proxy:
@@ -274,7 +280,7 @@ def install_python_deps(python_exe, external_uv_executable, uv_cache_dir=None):
             # Fallback to pip to install uv into penv
             try:
                 subprocess.check_call(
-                    [python_exe, "-m", "pip", "install", "uv>=0.1.0", "--quiet"],
+                    [python_exe, "-m", "pip", "install", "uv>=0.1.0", "--quiet", "--no-cache-dir"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.STDOUT,
                     timeout=300

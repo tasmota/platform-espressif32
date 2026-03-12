@@ -384,15 +384,15 @@ def HandleArduinoIDFsettings(env):
                 flash_size = env.GetProjectOption("board_upload.flash_size", None)
             except:
                 pass
-        
+
         # Fallback to board.json manifest
         if not flash_size:
             flash_size = board.get("upload", {}).get("flash_size", None)
 
         if flash_size == "2MB":
-            print(f"Info: Detected 2MB flash size setting, override to 4MB for Arduino MMU page size compatibility")
+            print("Info: Detected 2MB flash size setting, override to 4MB for Arduino MMU page size compatibility")
             flash_size = "4MB"
-        
+
         if flash_size:
             # Configure both string and boolean flash size formats
             # Disable other flash size options first
@@ -400,7 +400,7 @@ def HandleArduinoIDFsettings(env):
             for size in flash_sizes:
                 if size != flash_size:
                     board_config_flags.append(f"# CONFIG_ESPTOOLPY_FLASHSIZE_{size} is not set")
-            
+
             # Set the specific flash size configs
             board_config_flags.append(f"CONFIG_ESPTOOLPY_FLASHSIZE=\"{flash_size}\"")
             board_config_flags.append(f"CONFIG_ESPTOOLPY_FLASHSIZE_{flash_size}=y")
@@ -408,7 +408,7 @@ def HandleArduinoIDFsettings(env):
         # Handle Flash and PSRAM frequency configuration with platformio.ini override support
         # Priority: platformio.ini > board.json manifest
         # From 80MHz onwards, Flash and PSRAM frequencies must be identical
-        
+
         # Get f_flash with override support
         f_flash = None
         if hasattr(env, 'GetProjectOption'):
@@ -418,7 +418,7 @@ def HandleArduinoIDFsettings(env):
                 pass
         if not f_flash:
             f_flash = board.get("build.f_flash", None)
-        
+
         # Get f_boot with override support
         f_boot = None
         if hasattr(env, 'GetProjectOption'):
@@ -428,7 +428,7 @@ def HandleArduinoIDFsettings(env):
                 pass
         if not f_boot:
             f_boot = board.get("build.f_boot", None)
-        
+
         # Get f_psram with override support (ESP32-P4 specific)
         f_psram = None
         if hasattr(env, 'GetProjectOption'):
@@ -438,10 +438,10 @@ def HandleArduinoIDFsettings(env):
                 pass
         if not f_psram:
             f_psram = board.get("build.f_psram", None)
-        
+
         # Determine the frequencies to use
         # ESP32-P4: f_flash for Flash, f_psram for PSRAM (doesn't affect bootloader name)
-        
+
         if mcu == "esp32p4":
             # ESP32-P4: f_flash is always used for Flash frequency
             # f_psram is used for PSRAM frequency (if set), otherwise use f_flash
@@ -794,6 +794,8 @@ if flag_custom_sdkonfig == True and "arduino" in env.subst("$PIOFRAMEWORK") and 
         ARDUINO_LIB_COMPILE_FLAG="Build",
     )
     env["INTEGRATION_EXTRA_DATA"].update({"arduino_lib_compile_flag": env.subst("$ARDUINO_LIB_COMPILE_FLAG")})
+    # Remove lib_deps during Hybrid compile pass; they will be compiled in the subsequent Arduino compile
+    config.set("env:" + env["PIOENV"], "lib_deps", "")
 
 def get_project_lib_includes(env):
     project = ProjectAsLibBuilder(env, "$PROJECT_DIR")
@@ -2625,7 +2627,8 @@ if ("arduino" in env.subst("$PIOFRAMEWORK")) and ("espidf" not in env.subst("$PI
 
         _replace_copy(str(Path(lib_dst) / "libspi_flash.a"), str(Path(mem_var) / "libspi_flash.a"))
         _replace_copy(str(Path(env_build) / "memory.ld"), str(Path(ld_dst) / "memory.ld"))
-        if mcu == "esp32s3":
+        _replace_copy(str(Path(env_build) / "sections.ld"), str(Path(ld_dst) / "sections.ld"))
+        if mcu == "esp32s3" or mcu == "esp32p4":
             _replace_copy(str(Path(lib_dst) / "libesp_psram.a"), str(Path(mem_var) / "libesp_psram.a"))
             _replace_copy(str(Path(lib_dst) / "libesp_system.a"), str(Path(mem_var) / "libesp_system.a"))
             _replace_copy(str(Path(lib_dst) / "libfreertos.a"), str(Path(mem_var) / "libfreertos.a"))

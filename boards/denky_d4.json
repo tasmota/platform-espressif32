@@ -1,8 +1,5 @@
 {
   "build": {
-    "arduino":{
-      "ldscript": "esp32_out.ld"
-    },
     "core": "esp32",
     "extra_flags": [
       "-DARDUINO_DENKY_PICOV3",
@@ -20,6 +17,9 @@
     "ethernet",
     "can"
   ],
+  "debug": {
+    "openocd_board": "esp32-wrover.cfg"
+  },
   "frameworks": [
     "arduino",
     "espidf"

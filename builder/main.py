@@ -22,13 +22,6 @@ import subprocess
 import sys
 from os.path import isfile, join
 from pathlib import Path
-from littlefs import LittleFS
-from fatfs import Partition, RamDisk, create_extended_partition
-from fatfs import create_esp32_wl_image
-from fatfs import calculate_esp32_wl_overhead
-from fatfs import is_esp32_wl_image, extract_fat_from_esp32_wl
-from fatfs.partition_extended import PartitionExtended
-from fatfs.wrapper import pyf_mkfs, PY_FR_OK as FR_OK
 import importlib.util
 
 from SCons.Script import (
@@ -55,7 +48,16 @@ core_dir = projectconfig.get("platformio", "core_dir")
 build_dir = Path(projectconfig.get("platformio", "build_dir"))
 
 # Configure Python environment through centralized platform management
+# Must happen before importing penv-installed packages (fatfs, littlefs, etc.)
 PYTHON_EXE, esptool_binary_path = platform.setup_python_env(env)
+
+from littlefs import LittleFS
+from fatfs import Partition, RamDisk, create_extended_partition
+from fatfs import create_esp32_wl_image
+from fatfs import calculate_esp32_wl_overhead
+from fatfs import is_esp32_wl_image, extract_fat_from_esp32_wl
+from fatfs.partition_extended import PartitionExtended
+from fatfs.wrapper import pyf_mkfs, PY_FR_OK as FR_OK
 
 # Load SPIFFS generator from local module
 spiffsgen_path = platform_dir / "builder" / "spiffsgen.py"
@@ -1610,7 +1612,7 @@ if "nobuild" in COMMAND_LINE_TARGETS:
 else:
     target_elf = env.BuildProgram()
     silent_action = env.Action(firmware_metrics)
-    # Hack to silence scons command output
+    # Silence scons command output
     silent_action.strfunction = lambda target, source, env: ""
     env.AddPostAction(target_elf, silent_action)
     if set(["buildfs", "uploadfs", "uploadfsota"]) & set(COMMAND_LINE_TARGETS):
@@ -1776,19 +1778,34 @@ elif upload_protocol in debug_tools:
                 ]
             )
     openocd_args.extend(["-c", "reset run; shutdown"])
-    openocd_args = [
-        f.replace(
-            "$PACKAGE_DIR",
-            _to_unix_slashes(
-                platform.get_package_dir("tool-openocd-esp32") or ""
-            ),
-        )
-        for f in openocd_args
-    ]
+    openocd_pkg_dir = _to_unix_slashes(
+        platform.get_package_dir("tool-openocd-esp32") or ""
+    )
+    if openocd_pkg_dir:
+        openocd_args = [
+            f.replace("$PACKAGE_DIR", openocd_pkg_dir)
+            for f in openocd_args
+        ]
+        openocd_executable = str(Path(openocd_pkg_dir) / "bin" / "openocd")
+    else:
+        filtered = []
+        i = 0
+        while i < len(openocd_args):
+            if openocd_args[i] == "-s" and i + 1 < len(openocd_args) \
+                    and "$PACKAGE_DIR" in openocd_args[i + 1]:
+                i += 2
+                continue
+            if "$PACKAGE_DIR" in openocd_args[i]:
+                i += 1
+                continue
+            filtered.append(openocd_args[i])
+            i += 1
+        openocd_args = filtered
+        openocd_executable = "openocd"
     env.Replace(
-        UPLOADER="openocd",
+        UPLOADER=openocd_executable,
         UPLOADERFLAGS=openocd_args,
-        UPLOADCMD="$UPLOADER $UPLOADERFLAGS",
+        UPLOADCMD='"$UPLOADER" $UPLOADERFLAGS',
     )
     upload_actions = [env.VerboseAction("$UPLOADCMD", "Uploading $SOURCE")]
 
