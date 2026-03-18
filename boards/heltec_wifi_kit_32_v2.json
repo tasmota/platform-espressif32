@@ -1,7 +1,6 @@
 {
   "build": {
-    "arduino":{
-      "ldscript": "esp32_out.ld",
+    "arduino": {
       "partitions": "default_8MB.csv"
     },
     "core": "esp32",
@@ -18,6 +17,9 @@
     "ethernet",
     "can"
   ],
+  "debug": {
+    "openocd_board": "esp-wroom-32.cfg"
+  },
   "frameworks": [
     "arduino",
     "espidf"

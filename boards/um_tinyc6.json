@@ -1,0 +1,38 @@
+{
+  "build": {
+    "arduino":{
+      "partitions": "default_8MB.csv",
+      "memory_type": "qio_qspi"
+    },
+    "core": "esp32",
+    "extra_flags": [
+      "-DARDUINO_TINYC6"
+    ],
+    "f_cpu": "240000000L",
+    "f_flash": "80000000L",
+    "flash_mode": "qio",
+    "mcu": "esp32c6",
+    "variant": "um_tinyc6"
+  },
+  "connectivity": [
+    "bluetooth",
+    "wifi"
+  ],
+  "debug": {
+    "openocd_target": "esp32c6.cfg"
+  },
+  "frameworks": [
+    "arduino",
+    "espidf"
+  ],
+  "name": "Unexpected Maker TinyC6",
+  "upload": {
+    "flash_size": "8MB",
+    "maximum_ram_size": 327680,
+    "maximum_size": 8388608,
+    "require_upload_port": true,
+    "speed": 460800
+  },
+  "url": "https://unexpectedmaker.com/shop/tinyc6",
+  "vendor": "Unexpected Maker"
+}

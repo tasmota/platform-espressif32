@@ -1,7 +1,6 @@
 {
   "build": {
     "arduino": {
-      "ldscript": "esp32_out.ld",
       "partitions": "default_8MB.csv"
     },
     "core": "esp32",
@@ -26,7 +25,7 @@
     "can"
   ],
   "debug": {
-    "openocd_board": "esp-wroom-32.cfg"
+    "openocd_board": "esp32-wrover.cfg"
   },
   "frameworks": [
     "arduino",

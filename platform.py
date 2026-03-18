@@ -12,103 +12,771 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import urllib
+# Python Version Check
 import sys
+from platformio.compat import IS_WINDOWS
+
+pyver = sys.version_info
+if IS_WINDOWS:
+    allowed = (3, 10) <= pyver < (3, 14)
+    supported = "3.10, 3.11, 3.12, 3.13"
+else:
+    allowed = (3, 10) <= pyver < (3, 15)
+    supported = "3.10, 3.11, 3.12, 3.13, 3.14"
+if not allowed:
+    print(f"ERROR: Python version must be {supported}.", file=sys.stderr)
+    print(f"Current Python version: {pyver.major}.{pyver.minor}.{pyver.micro}", file=sys.stderr)
+    print(f"Supported versions: {supported}", file=sys.stderr)
+    raise SystemExit(1)
+
+# LZMA support check
+try:
+    import lzma as _lzma
+except ImportError:
+    print("ERROR: Python's lzma module is unavailable or broken in this interpreter.", file=sys.stderr)
+    print("LZMA (liblzma) support is required for tool/toolchain installation.", file=sys.stderr)
+    print("Please install Python built with LZMA support.", file=sys.stderr)
+    raise SystemExit(1)
+else:
+    # Keep namespace clean
+    del _lzma
+
+import fnmatch
+import importlib.util
 import json
-import re
-import requests
+import logging
+import os
+import shutil
+import struct
+import subprocess
+from pathlib import Path
+from typing import Optional, Dict, List, Any, Union
 
 from platformio.public import PlatformBase, to_unix_path
+from platformio.proc import get_pythonexe_path
+from platformio.project.config import ProjectConfig
+from platformio.package.manager.tool import ToolPackageManager
 
 
-IS_WINDOWS = sys.platform.startswith("win")
+# Import penv_setup functionality using explicit module loading for centralized Python environment management
+penv_setup_path = Path(__file__).parent / "builder" / "penv_setup.py"
+spec = importlib.util.spec_from_file_location("penv_setup", str(penv_setup_path))
+penv_setup_module = importlib.util.module_from_spec(spec)
+sys.modules["penv_setup"] = penv_setup_module
+spec.loader.exec_module(penv_setup_module)
+
+setup_penv_minimal = penv_setup_module.setup_penv_minimal
+get_executable_path = penv_setup_module.get_executable_path
+has_internet_connection = penv_setup_module.has_internet_connection
+install_freertos_gdb = penv_setup_module.install_freertos_gdb
+GDB_TOOL_PACKAGES = penv_setup_module.GDB_TOOL_PACKAGES
+
+
+# Constants
+DEFAULT_DEBUG_SPEED = "5000"
+DEFAULT_APP_OFFSET = "0x10000"
+tl_install_name = "tool-esp_install"
+
+# MCUs that support ESP-builtin debug
+ESP_BUILTIN_DEBUG_MCUS = frozenset([
+    "esp32c3", "esp32c5", "esp32c6", "esp32c61", "esp32s3", "esp32h2", "esp32p4"
+])
+
+# MCU configuration mapping
+MCU_TOOLCHAIN_CONFIG = {
+    "xtensa": {
+        "mcus": frozenset(["esp32", "esp32s2", "esp32s3"]),
+        "toolchains": ["toolchain-xtensa-esp-elf", GDB_TOOL_PACKAGES["xtensa"]]
+    },
+    "riscv": {
+        "mcus": frozenset([
+            "esp32c2", "esp32c3", "esp32c5", "esp32c6", "esp32c61", "esp32h2", "esp32p4"
+        ]),
+        "toolchains": ["toolchain-riscv32-esp", GDB_TOOL_PACKAGES["riscv"]]
+    }
+}
+
+COMMON_IDF_PACKAGES = [
+    "tool-cmake",
+    "tool-ninja",
+    "tool-scons",
+    "tool-esp-rom-elfs"
+]
+
+CHECK_PACKAGES = [
+    "tool-cppcheck",
+    "tool-clangtidy"
+]
+
+# System-specific configuration
 # Set Platformio env var to use windows_amd64 for all windows architectures
 # only windows_amd64 native espressif toolchains are available
-# needs platformio core >= 6.1.16b2 or pioarduino core 6.1.16+test
 if IS_WINDOWS:
     os.environ["PLATFORMIO_SYSTEM_TYPE"] = "windows_amd64"
 
+# exit without git
+if not shutil.which("git"):
+    print("Git not found in PATH, please install Git.", file=sys.stderr)
+    print("Git is needed for Platform espressif32 to work.", file=sys.stderr)
+    raise SystemExit(1)
+
+# Set IDF_TOOLS_PATH to Pio core_dir
+PROJECT_CORE_DIR = ProjectConfig.get_instance().get("platformio", "core_dir")
+IDF_TOOLS_PATH = PROJECT_CORE_DIR
+os.environ["IDF_TOOLS_PATH"] = IDF_TOOLS_PATH
+os.environ['IDF_PATH'] = ""
+
+# Global variables
+python_exe = get_pythonexe_path()
+pm = ToolPackageManager()
+
+# Configure logger
+logger = logging.getLogger(__name__)
+
+
+def safe_file_operation(operation_func):
+    """Decorator for safe filesystem operations with error handling."""
+    def wrapper(*args, **kwargs):
+        try:
+            return operation_func(*args, **kwargs)
+        except (OSError, IOError, FileNotFoundError) as e:
+            logger.error(f"Filesystem error in {operation_func.__name__}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error in {operation_func.__name__}: {e}")
+            raise  # Re-raise unexpected exceptions
+    return wrapper
+
+
+@safe_file_operation
+def safe_remove_file(path: Union[str, Path]) -> bool:
+    """Safely remove a file with error handling using pathlib."""
+    path = Path(path)
+    if path.is_file() or path.is_symlink():
+        path.unlink()
+        logger.debug(f"File removed: {path}")
+    return True
+
+
+@safe_file_operation
+def safe_remove_directory(path: Union[str, Path]) -> bool:
+    """Safely remove directories with error handling using pathlib."""
+    path = Path(path)
+    if not path.exists():
+        return True
+    if path.is_symlink():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+        logger.debug(f"Directory removed: {path}")
+    return True
+
+
+@safe_file_operation
+def safe_remove_directory_pattern(base_path: Union[str, Path], pattern: str) -> bool:
+    """Safely remove directories matching a pattern with error handling using pathlib."""
+    base_path = Path(base_path)
+    if not base_path.exists():
+        return True
+    for item in base_path.iterdir():
+        if item.is_dir() and fnmatch.fnmatch(item.name, pattern):
+            if item.is_symlink():
+                item.unlink()
+            else:
+                shutil.rmtree(item)
+            logger.debug(f"Directory removed: {item}")
+    return True
+
+
+@safe_file_operation
+def safe_copy_file(src: Union[str, Path], dst: Union[str, Path]) -> bool:
+    """Safely copy files with error handling using pathlib."""
+    src, dst = Path(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    logger.debug(f"File copied: {src} -> {dst}")
+    return True
+
+
+@safe_file_operation
+def safe_copy_directory(src: Union[str, Path], dst: Union[str, Path]) -> bool:
+    """Safely copy directories with error handling using pathlib."""
+    src, dst = Path(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst, dirs_exist_ok=True, copy_function=shutil.copy2, symlinks=True)
+    logger.debug(f"Directory copied: {src} -> {dst}")
+    return True
+
 
 class Espressif32Platform(PlatformBase):
-    def configure_default_packages(self, variables, targets):
+    """ESP32 platform implementation for PlatformIO with optimized toolchain management."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the ESP32 platform with caching mechanisms."""
+        super().__init__(*args, **kwargs)
+        self._packages_dir = None
+        self._tools_cache = {}
+        self._mcu_config_cache = {}
+
+    @property
+    def packages_dir(self) -> Path:
+        """Get cached packages directory path."""
+        if self._packages_dir is None:
+            config = ProjectConfig.get_instance()
+            self._packages_dir = Path(config.get("platformio", "packages_dir"))
+        return self._packages_dir
+
+    def _check_tl_install_version(self) -> bool:
+        """
+        Check if tool-esp_install is installed in the correct version.
+        Install the correct version only if version differs.
+        
+        Returns:
+            bool: True if correct version is available, False on error
+        """
+        
+        # Get required version from platform.json
+        required_version = self.packages.get(tl_install_name, {}).get("version")
+        if not required_version:
+            logger.debug(f"No version check required for {tl_install_name}")
+            return True
+        
+        # Check current installation status
+        tl_install_path = self.packages_dir / tl_install_name
+        package_json_path = tl_install_path / "package.json"
+        
+        if not package_json_path.exists():
+            logger.info(f"{tl_install_name} not installed, installing version {required_version}")
+            return self._install_tl_install(required_version)
+        
+        # Read installed version
+        try:
+            with open(package_json_path, 'r', encoding='utf-8') as f:
+                package_data = json.load(f)
+            
+            installed_version = package_data.get("version")
+            if not installed_version:
+                logger.warning(f"Installed version for {tl_install_name} unknown, installing {required_version}")
+                return self._install_tl_install(required_version)
+            
+            # Compare versions to avoid unnecessary reinstallation
+            if self._compare_tl_install_versions(installed_version, required_version):
+                logger.debug(f"{tl_install_name} version {installed_version} is already correctly installed")
+                # Mark package as available without reinstalling
+                self.packages[tl_install_name]["optional"] = True
+                return True
+            else:
+                logger.info(
+                    f"Version mismatch for {tl_install_name}: "
+                    f"installed={installed_version}, required={required_version}, installing correct version"
+                )
+                return self._install_tl_install(required_version)
+            
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.error(f"Error reading package data for {tl_install_name}: {e}")
+            return self._install_tl_install(required_version)
+
+    def _compare_tl_install_versions(self, installed: str, required: str) -> bool:
+        """
+        Compare installed and required version of tool-esp_install.
+        
+        Args:
+            installed: Currently installed version string
+            required: Required version string from platform.json
+            
+        Returns:
+            bool: True if versions match, False otherwise
+        """
+        # For URL-based versions: Extract version string from URL
+        installed_clean = self._extract_version_from_url(installed)
+        required_clean = self._extract_version_from_url(required)
+        
+        logger.debug(f"Version comparison: installed='{installed_clean}' vs required='{required_clean}'")
+        
+        return installed_clean == required_clean
+
+    def _extract_version_from_url(self, version_string: str) -> str:
+        """
+        Extract version information from URL or return version directly.
+        
+        Args:
+            version_string: Version string or URL containing version
+            
+        Returns:
+            str: Extracted version string
+        """
+        if version_string.startswith(('http://', 'https://')):
+            # Extract version from URL like: .../v5.1.0/esp_install-v5.1.0.zip
+            import re
+            version_match = re.search(r'v(\d+\.\d+\.\d+)', version_string)
+            if version_match:
+                return version_match.group(1)  # Returns "5.1.0"
+            else:
+                # Fallback: Use entire URL
+                return version_string
+        else:
+            # Direct version number
+            return version_string.strip()
+
+    def _install_tl_install(self, version: str) -> bool:
+        """
+        Install tool-esp_install with version validation and legacy compatibility.
+
+        Args:
+            version: Version string or URL to install
+   
+        Returns:
+            bool: True if installation successful, False otherwise
+        """
+        tl_install_path = Path(self.packages_dir) / tl_install_name
+        old_tl_install_path = Path(self.packages_dir) / "tl-install"
+
+        try:
+            old_tl_install_exists = old_tl_install_path.exists()
+            if old_tl_install_exists:
+                # Remove legacy tl-install directory
+                safe_remove_directory(old_tl_install_path)
+
+            if tl_install_path.exists():
+                logger.info(f"Removing old {tl_install_name} installation")
+                safe_remove_directory(tl_install_path)
+
+            logger.info(f"Installing {tl_install_name} version {version}")
+            self.packages[tl_install_name]["optional"] = False
+            self.packages[tl_install_name]["version"] = version
+            pm.install(version)
+            # Remove PlatformIO install marker to prevent version conflicts
+            tl_piopm_path = tl_install_path / ".piopm"
+            safe_remove_file(tl_piopm_path)
+
+            if (tl_install_path / "package.json").exists():
+                logger.info(f"{tl_install_name} successfully installed and verified")
+                self.packages[tl_install_name]["optional"] = True
+            
+                # Maintain backwards compatibility with legacy tl-install references
+                if old_tl_install_exists:
+                    # Copy tool-esp_install content to legacy tl-install location
+                    if safe_copy_directory(tl_install_path, old_tl_install_path):
+                        logger.info(f"Content copied from {tl_install_name} to old tl-install location")
+                    else:
+                        logger.warning("Failed to copy content to old tl-install location")
+                return True
+            else:
+                logger.error(f"{tl_install_name} installation failed - package.json not found")
+                return False
+        
+        except Exception as e:
+            logger.error(f"Error installing {tl_install_name}: {e}")
+            return False
+
+    def _cleanup_versioned_tool_directories(self, tool_name: str) -> None:
+        """
+        Clean up versioned tool directories containing '@' or version suffixes.
+        This function should be called during every tool version check.
+        
+        Args:
+            tool_name: Name of the tool to clean up
+        """
+        packages_path = Path(self.packages_dir)
+        if not packages_path.exists() or not packages_path.is_dir():
+            return
+            
+        try:
+            # Remove directories with '@' in their name (e.g., tool-name@version, tool-name@src)
+            safe_remove_directory_pattern(packages_path, f"{tool_name}@*")
+            
+            # Remove directories with version suffixes (e.g., tool-name.12345)
+            safe_remove_directory_pattern(packages_path, f"{tool_name}.*")
+            
+            # Also check for any directory that starts with tool_name and contains '@'
+            for item in packages_path.iterdir():
+                if item.name.startswith(tool_name) and '@' in item.name and item.is_dir():
+                    safe_remove_directory(item)
+                    logger.debug(f"Removed versioned directory: {item}")
+                        
+        except OSError:
+            logger.exception(f"Error cleaning up versioned directories for {tool_name}")
+
+    def _get_tool_paths(self, tool_name: str) -> Dict[str, str]:
+        """Get centralized path calculation for tools with caching."""
+        if tool_name not in self._tools_cache:
+            tool_path = Path(self.packages_dir) / tool_name
+            
+            self._tools_cache[tool_name] = {
+                'tool_path': str(tool_path),
+                'package_path': str(tool_path / "package.json"),
+                'tools_json_path': str(tool_path / "tools.json"),
+                'piopm_path': str(tool_path / ".piopm"),
+                'idf_tools_path': str(Path(self.packages_dir) / tl_install_name / "tools" / "idf_tools.py")
+            }
+        return self._tools_cache[tool_name]
+
+    def _check_tool_status(self, tool_name: str) -> Dict[str, bool]:
+        """Check the installation status of a tool."""
+        paths = self._get_tool_paths(tool_name)
+        return {
+            'has_idf_tools': Path(paths['idf_tools_path']).exists(),
+            'has_tools_json': Path(paths['tools_json_path']).exists(),
+            'has_piopm': Path(paths['piopm_path']).exists(),
+            'tool_exists': Path(paths['tool_path']).exists()
+        }
+
+    def _run_idf_tools_install(self, tools_json_path: str, idf_tools_path: str, penv_python: Optional[str] = None) -> bool:
+        """
+        Execute idf_tools.py install command.
+        Note: No timeout is set to allow installations to complete on slow networks.
+        The tool-esp_install handles the retry logic.
+        """
+        # Use penv Python if available, fallback to system Python
+        python_executable = penv_python or python_exe
+        
+        cmd = [
+            python_executable,
+            idf_tools_path,
+            "--quiet",
+            "--non-interactive",
+            "--tools-json",
+            tools_json_path,
+            "install"
+        ]
+
+        try:
+            logger.info(f"Installing tools via idf_tools.py (this may take several minutes)...")
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+
+            if result.returncode != 0:
+                tail = (result.stderr or result.stdout or "").strip()[-1000:]
+                logger.error("idf_tools.py installation failed (rc=%s). Tail:\n%s", result.returncode, tail)
+                return False
+
+            logger.debug("idf_tools.py executed successfully")
+            return True
+
+        except (subprocess.SubprocessError, OSError) as e:
+            logger.error(f"Error in idf_tools.py: {e}")
+            return False
+
+    def _check_tool_version(self, tool_name: str) -> bool:
+        """Check if the installed tool version matches the required version."""
+        # Clean up versioned directories before version checks to prevent conflicts
+        self._cleanup_versioned_tool_directories(tool_name)
+        
+        paths = self._get_tool_paths(tool_name)
+
+        try:
+            with open(paths['package_path'], 'r', encoding='utf-8') as f:
+                package_data = json.load(f)
+
+            required_version = self.packages.get(tool_name, {}).get("package-version")
+            installed_version = package_data.get("version")
+
+            if not required_version:
+                logger.debug(f"No version check required for {tool_name}")
+                return True
+
+            if not installed_version:
+                logger.warning(f"Installed version for {tool_name} unknown")
+                return False
+
+            version_match = required_version == installed_version
+            if not version_match:
+                logger.info(
+                    f"Version mismatch for {tool_name}: "
+                    f"{installed_version} != {required_version}"
+                )
+
+            return version_match
+
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.error(f"Error reading package data for {tool_name}: {e}")
+            return False
+
+    def install_tool(self, tool_name: str) -> bool:
+        """Install a tool."""
+        self.packages[tool_name]["optional"] = False
+        paths = self._get_tool_paths(tool_name)
+        status = self._check_tool_status(tool_name)
+
+        # Use centrally configured Python executable if available
+        penv_python = getattr(self, '_penv_python', None)
+
+        # Case 1: Fresh installation using idf_tools.py
+        if status['has_idf_tools'] and status['has_tools_json']:
+            return self._install_with_idf_tools(tool_name, paths, penv_python)
+
+        # Case 2: Tool already installed, perform version validation
+        if (status['has_idf_tools'] and status['has_piopm'] and
+                not status['has_tools_json']):
+            return self._handle_existing_tool(tool_name, paths)
+
+        logger.debug(f"Tool {tool_name} already configured")
+        return True
+
+    def _install_with_idf_tools(self, tool_name: str, paths: Dict[str, str], penv_python: Optional[str] = None) -> bool:
+        """Install tool using idf_tools.py installation method."""
+        if not self._run_idf_tools_install(
+            paths['tools_json_path'], paths['idf_tools_path'], penv_python
+        ):
+            return False
+
+        # Copy tool metadata to IDF tools directory
+        target_package_path = Path(IDF_TOOLS_PATH) / "tools" / tool_name / "package.json"
+
+        if not safe_copy_file(paths['package_path'], target_package_path):
+            return False
+
+        safe_remove_directory(paths['tool_path'])
+
+        tl_path = f"file://{Path(IDF_TOOLS_PATH) / 'tools' / tool_name}"
+        pm.install(tl_path)
+
+        logger.info(f"Tool {tool_name} successfully installed")
+        return True
+
+    def _handle_existing_tool(self, tool_name: str, paths: Dict[str, str]) -> bool:
+        """Handle already installed tools with version checking."""
+        if self._check_tool_version(tool_name):
+            # Version matches, use tool
+            self.packages[tool_name]["version"] = paths['tool_path']
+            self.packages[tool_name]["optional"] = False
+            logger.debug(f"Tool {tool_name} found with correct version")
+            return True
+
+        # Version mismatch detected, reinstall tool (cleanup already performed)
+        logger.info(f"Reinstalling {tool_name} due to version mismatch")
+
+        # Remove the main tool directory (if it still exists after cleanup)
+        safe_remove_directory(paths['tool_path'])
+
+        return self.install_tool(tool_name)
+
+    def _configure_arduino_framework(self, frameworks: List[str]) -> None:
+        """Configure Arduino framework dependencies."""
+        if "arduino" not in frameworks:
+            return
+
+        safe_remove_directory_pattern(Path(self.packages_dir), f"framework-arduinoespressif32@*")
+        safe_remove_directory_pattern(Path(self.packages_dir), f"framework-arduinoespressif32.*")
+        self.packages["framework-arduinoespressif32"]["optional"] = False
+
+    def _configure_espidf_framework(
+        self, frameworks: List[str], variables: Dict, board_config: Dict, mcu: str
+    ) -> None:
+        """Configure ESP-IDF framework based on custom sdkconfig settings."""
+        custom_sdkconfig = variables.get("custom_sdkconfig")
+        board_sdkconfig = variables.get(
+            "board_espidf.custom_sdkconfig",
+            board_config.get("espidf.custom_sdkconfig", "")
+        )
+
+        if custom_sdkconfig is not None or len(str(board_sdkconfig)) > 3:
+            frameworks.append("espidf")
+            safe_remove_directory_pattern(Path(self.packages_dir), f"framework-espidf@*")
+            safe_remove_directory_pattern(Path(self.packages_dir), f"framework-espidf.*")
+            self.packages["framework-espidf"]["optional"] = False
+
+    def _get_mcu_config(self, mcu: str) -> Optional[Dict]:
+        """Get MCU configuration with optimized caching and search."""
+        if mcu in self._mcu_config_cache:
+            return self._mcu_config_cache[mcu]
+
+        for _, config in MCU_TOOLCHAIN_CONFIG.items():
+            if mcu in config["mcus"]:
+                # Dynamically add ULP toolchain
+                result = config.copy()
+                result["ulp_toolchain"] = ["toolchain-esp32ulp"]
+                if mcu != "esp32":
+                    result["ulp_toolchain"].append("toolchain-riscv32-esp")
+                self._mcu_config_cache[mcu] = result
+                return result
+        return None
+
+    def _needs_debug_tools(self, variables: Dict, targets: List[str]) -> bool:
+        """Check if debug tools are needed based on build configuration."""
+        return bool(
+            variables.get("build_type") or
+            "debug" in targets or
+            variables.get("upload_protocol")
+        )
+
+    def _configure_mcu_toolchains(
+        self, mcu: str, variables: Dict, targets: List[str]
+    ) -> None:
+        """
+        Install toolchains and debugging packages required for the specified MCU.
+        
+        Installs the MCU's base toolchains (including GDB) from the MCU configuration. If an "ulp" 
+        directory exists, installs the ULP toolchain entries. When build variables or targets indicate 
+        debugging is required, installs debug-related tools (OpenOCD and ROM-ELF helper).
+        
+        Parameters:
+            mcu (str): MCU identifier (e.g., "esp32", "esp32c3").
+            variables (Dict): Build variables used to determine debugging requirements.
+            targets (List[str]): Build targets that may trigger installation of debug tooling.
+        """
+        mcu_config = self._get_mcu_config(mcu)
+        if not mcu_config:
+            logger.warning(f"Unknown MCU: {mcu}")
+            return
+
+        # Install base toolchains (including GDB)
+        for toolchain in mcu_config["toolchains"]:
+            self.install_tool(toolchain)
+
+        # ULP toolchain if ULP directory exists
+        if mcu_config.get("ulp_toolchain") and Path("ulp").is_dir():
+            for toolchain in mcu_config["ulp_toolchain"]:
+                self.install_tool(toolchain)
+
+        # Additional debug tools when needed
+        if self._needs_debug_tools(variables, targets):
+            self.install_tool("tool-openocd-esp32")
+            self.install_tool("tool-esp-rom-elfs")
+
+    def _configure_installer(self) -> None:
+        """
+        Ensure the ESP-IDF tools installer is present and up to date.
+        
+        Verifies and installs the tool-esp_install package when necessary, removes a legacy
+        PlatformIO install marker to avoid conflicts, and marks the installer package as
+        optional if idf_tools.py is available. Logs a warning if idf_tools.py cannot be found.
+        """
+        
+        # Check version - installs only when needed
+        if not self._check_tl_install_version():
+            logger.error("Error during tool-esp_install version check / installation")
+            return
+
+        # Remove legacy PlatformIO install marker to prevent version conflicts
+        old_tl_piopm_path = Path(self.packages_dir) / "tl-install" / ".piopm"
+        if old_tl_piopm_path.exists():
+            safe_remove_file(old_tl_piopm_path)
+        
+        # Check if idf_tools.py is available
+        installer_path = Path(self.packages_dir) / tl_install_name / "tools" / "idf_tools.py"
+        
+        if installer_path.exists():
+            logger.debug(f"{tl_install_name} is available and ready")
+            self.packages[tl_install_name]["optional"] = True
+        else:
+            logger.warning(f"idf_tools.py not found in {installer_path}")
+
+    def _install_esptool_package(self) -> None:
+        """Install esptool package required for all builds."""
+        self.install_tool("tool-esptoolpy")
+
+    def _install_common_idf_packages(self) -> None:
+        """Install common ESP-IDF packages required for all builds."""
+        for package in COMMON_IDF_PACKAGES:
+            self.install_tool(package)
+
+    def _check_exception_decoder_filter(self, variables: Dict) -> bool:
+        """
+        Check if esp32_exception_decoder filter is configured in monitor_filters.
+        
+        Args:
+            variables: Build configuration variables from platformio.ini
+            
+        Returns:
+            bool: True if esp32_exception_decoder is configured, False otherwise
+        """
+        monitor_filters = variables.get("monitor_filters", [])
+        
+        # Handle both list and string formats
+        if isinstance(monitor_filters, str):
+            monitor_filters = [f.strip() for f in monitor_filters.split(",")]
+        
+        return "esp32_exception_decoder" in monitor_filters
+
+    def _configure_rom_elfs_for_exception_decoder(self, variables: Dict) -> None:
+        """
+        Install tool-esp-rom-elfs if esp32_exception_decoder filter is enabled.
+        
+        The ESP32 exception decoder requires ROM ELF files to decode addresses
+        from ROM code regions in crash backtraces.
+        
+        Args:
+            variables: Build configuration variables from platformio.ini
+        """
+        if self._check_exception_decoder_filter(variables):
+            logger.info("esp32_exception_decoder filter detected, installing tool-esp-rom-elfs")
+            self.install_tool("tool-esp-rom-elfs")
+
+    def _configure_check_tools(self, variables: Dict) -> None:
+        """Configure static analysis and check tools based on configuration."""
+        check_tools = variables.get("check_tool", [])
+        self.install_tool("contrib-piohome")
+        if not check_tools:
+            return
+
+        for package in CHECK_PACKAGES:
+            if any(tool in package for tool in check_tools):
+                self.install_tool(package)
+
+    def setup_python_env(self, env):
+        """Configure SCons environment with centrally managed Python executable paths."""
+        # Python environment is centrally managed in configure_default_packages
+        if hasattr(self, '_penv_python') and hasattr(self, '_esptool_path'):
+            # Update SCons environment with centrally configured Python executable
+            env.Replace(PYTHONEXE=self._penv_python)
+            return self._penv_python, self._esptool_path
+
+    def configure_default_packages(self, variables: Dict, targets: List[str]) -> Any:
+        """Main configuration method with optimized package management."""
         if not variables.get("board"):
             return super().configure_default_packages(variables, targets)
 
+        # Base configuration
         board_config = self.board_config(variables.get("board"))
         mcu = variables.get("board_build.mcu", board_config.get("build.mcu", "esp32"))
-        board_sdkconfig = variables.get("board_espidf.custom_sdkconfig", board_config.get("espidf.custom_sdkconfig", ""))
-        frameworks = variables.get("pioframework", [])
+        frameworks = list(variables.get("pioframework", []))  # Create copy
 
-        if "arduino" in frameworks and variables.get("custom_sdkconfig") is None and len(str(board_sdkconfig)) < 3:
-            self.packages["framework-arduinoespressif32"]["optional"] = False
+        try:
+            # FIRST: Install required packages
+            self._configure_installer()
+            self._install_esptool_package()
+            
+            # Complete Python virtual environment setup
+            config = ProjectConfig.get_instance()
+            core_dir = config.get("platformio", "core_dir")
+            
+            # Setup penv using minimal function (no SCons dependencies, esptool from tl-install)
+            penv_python, esptool_path = setup_penv_minimal(self, core_dir, install_esptool=True)
+            
+            # Store both for later use
+            self._penv_python = penv_python
+            self._esptool_path = esptool_path
+            
+            # Configuration steps (now with penv available)
+            self._configure_arduino_framework(frameworks)
+            self._configure_espidf_framework(frameworks, variables, board_config, mcu)
+            self._configure_mcu_toolchains(mcu, variables, targets)
+            
+            # Install freertos-gdb after MCU toolchains are installed
+            install_freertos_gdb(self, get_executable_path(str(Path(core_dir) / "penv"), "uv"), penv_python, str(Path(core_dir) / ".cache" / "uv"))
 
-        if variables.get("custom_sdkconfig") is not None or len(str(board_sdkconfig)) > 3:
-            frameworks.append("espidf")
-            self.packages["framework-espidf"]["optional"] = False
-            self.packages["framework-arduinoespressif32"]["optional"] = False
+            if "espidf" in frameworks:
+                self._install_common_idf_packages()
 
-        # Enable check tools only when "check_tool" is enabled
-        for p in self.packages:
-            if p in ("tool-cppcheck", "tool-clangtidy", "tool-pvs-studio"):
-                self.packages[p]["optional"] = False if str(variables.get("check_tool")).strip("['']") in p else True
+            self._configure_rom_elfs_for_exception_decoder(variables)
+            self._configure_check_tools(variables)
 
-        if "buildfs" in targets:
-            filesystem = variables.get("board_build.filesystem", "littlefs")
-            if filesystem == "littlefs":
-                self.packages["tool-mklittlefs"]["optional"] = False
-            elif filesystem == "fatfs":
-                self.packages["tool-mkfatfs"]["optional"] = False
-        if variables.get("upload_protocol"):
-            self.packages["tool-openocd-esp32"]["optional"] = False
-        if os.path.isdir("ulp"):
-            self.packages["toolchain-esp32ulp"]["optional"] = False
+            logger.info("Package configuration completed successfully")
 
-        if "downloadfs" in targets:
-            filesystem = variables.get("board_build.filesystem", "littlefs")
-            if filesystem == "littlefs":
-                # Use Tasmota mklittlefs v4.0.0 to unpack, older version is incompatible
-                self.packages["tool-mklittlefs"]["version"] = "~4.0.0"
-
-        # Currently only Arduino Nano ESP32 uses the dfuutil tool as uploader
-        if variables.get("board") == "arduino_nano_esp32":
-            self.packages["tool-dfuutil-arduino"]["optional"] = False
-        else:
-            del self.packages["tool-dfuutil-arduino"]
-
-        # Starting from v12, Espressif's toolchains are shipped without
-        # bundled GDB. Instead, it's distributed as separate packages for Xtensa
-        # and RISC-V targets.
-        for gdb_package in ("tool-xtensa-esp-elf-gdb", "tool-riscv32-esp-elf-gdb"):
-            self.packages[gdb_package]["optional"] = False
-            # if IS_WINDOWS:
-                # Note: On Windows GDB v12 is not able to
-                # launch a GDB server in pipe mode while v11 works fine
-                # self.packages[gdb_package]["version"] = "~11.2.0"
-
-        # Common packages for IDF and mixed Arduino+IDF projects
-        if "espidf" in frameworks:
-            self.packages["toolchain-esp32ulp"]["optional"] = False
-            for p in self.packages:
-                if p in ("tool-scons", "tool-cmake", "tool-ninja"):
-                    self.packages[p]["optional"] = False
-                elif p in ("tool-mconf", "tool-idf") and IS_WINDOWS:
-                    self.packages[p]["optional"] = False
-
-        if mcu in ("esp32", "esp32s2", "esp32s3"):
-            self.packages["toolchain-xtensa-esp-elf"]["optional"] = False
-        else:
-            self.packages.pop("toolchain-xtensa-esp-elf", None)
-
-        if mcu in ("esp32s2", "esp32s3", "esp32c2", "esp32c3", "esp32c6", "esp32h2", "esp32p4"):
-            if mcu in ("esp32c2", "esp32c3", "esp32c6", "esp32h2", "esp32p4"):
-                self.packages.pop("toolchain-esp32ulp", None)
-            # RISC-V based toolchain for ESP32C3, ESP32C6 ESP32S2, ESP32S3 ULP
-            self.packages["toolchain-riscv32-esp"]["optional"] = False
+        except Exception as e:
+            logger.error(f"Error in package configuration: {type(e).__name__}: {e}")
+            # Don't re-raise to maintain compatibility
 
         return super().configure_default_packages(variables, targets)
 
     def get_boards(self, id_=None):
+        """Get board configuration with dynamic options."""
         result = super().get_boards(id_)
         if not result:
             return result
@@ -120,13 +788,28 @@ class Espressif32Platform(PlatformBase):
         return result
 
     def _add_dynamic_options(self, board):
-        # upload protocols
+        """
+        Add dynamic upload protocol and debug-tool entries to a board manifest.
+        
+        Ensures upload.protocols and upload.protocol defaults, auto-adds supported debug tools
+        (and MCU-specific builtin/ftdi entries), sets an SVD path when available, and
+        populates debug.tools with OpenOCD server configurations, init commands, and
+        per-tool metadata. Returns the updated board object.
+        
+        Parameters:
+            board: Board object whose manifest will be modified.
+        
+        Returns:
+            The same Board instance with its manifest updated to include dynamic upload
+            protocols and debug tool configurations.
+        """
+        # Upload protocols
         if not board.get("upload.protocols", []):
             board.manifest["upload"]["protocols"] = ["esptool", "espota"]
         if not board.get("upload.protocol", ""):
             board.manifest["upload"]["protocol"] = "esptool"
 
-        # debug tools
+        # Debug tools
         debug = board.manifest.get("debug", {})
         non_debug_protocols = ["esptool", "espota"]
         supported_debug_tools = [
@@ -140,17 +823,27 @@ class Espressif32Platform(PlatformBase):
             "olimex-arm-usb-ocd-h",
             "olimex-arm-usb-ocd",
             "olimex-jtag-tiny",
-            "tumpa",
+            "tumpa"
         ]
 
-        # A special case for the Kaluga board that has a separate interface config
+        # Special configuration for Kaluga board
         if board.id == "esp32-s2-kaluga-1":
             supported_debug_tools.append("ftdi")
-        if board.get("build.mcu", "") in ("esp32c3", "esp32c6", "esp32s3", "esp32h2"):
+
+        # ESP-builtin for certain MCUs
+        mcu = board.get("build.mcu", "")
+        if mcu in ESP_BUILTIN_DEBUG_MCUS:
             supported_debug_tools.append("esp-builtin")
+
+        # Auto-assign SVD path based on MCU if not already set
+        if debug and not debug.get("svd_path"):
+            svd_file = Path(self.get_dir()) / "misc" / "svd" / f"{mcu}.svd"
+            if svd_file.is_file():
+                debug["svd_path"] = str(svd_file)
 
         upload_protocol = board.manifest.get("upload", {}).get("protocol")
         upload_protocols = board.manifest.get("upload", {}).get("protocols", [])
+
         if debug:
             upload_protocols.extend(supported_debug_tools)
         if upload_protocol and upload_protocol not in upload_protocols:
@@ -164,33 +857,24 @@ class Espressif32Platform(PlatformBase):
             if link in non_debug_protocols or link in debug["tools"]:
                 continue
 
-            if link in ("jlink", "cmsis-dap"):
-                openocd_interface = link
-            elif link in ("esp-prog", "ftdi"):
-                if board.id == "esp32-s2-kaluga-1":
-                    openocd_interface = "ftdi/esp32s2_kaluga_v1"
-                else:
-                    openocd_interface = "ftdi/esp32_devkitj_v1"
-            elif link == "esp-bridge":
-                openocd_interface = "esp_usb_bridge"
-            elif link == "esp-builtin":
-                openocd_interface = "esp_usb_jtag"
-            else:
-                openocd_interface = "ftdi/" + link
+            openocd_interface = self._get_openocd_interface(link, board)
+            server_args = self._get_debug_server_args(openocd_interface, debug)
 
-            server_args = [
-                "-s",
-                "$PACKAGE_DIR/share/openocd/scripts",
-                "-f",
-                "interface/%s.cfg" % openocd_interface,
-                "-f",
-                "%s/%s"
-                % (
-                    ("target", debug.get("openocd_target"))
-                    if "openocd_target" in debug
-                    else ("board", debug.get("openocd_board"))
-                ),
+            init_cmds = [
+                "define pio_reset_halt_target",
+                "   monitor reset halt",
+                "   maintenance flush register-cache",
+                "end",
+                "define pio_reset_run_target",
+                "   monitor reset",
+                "end",
             ]
+            init_cmds.extend([
+                "target extended-remote $DEBUG_PORT",
+                "$LOAD_CMDS",
+                "pio_reset_halt_target",
+                "$INIT_BREAK",
+            ])
 
             debug["tools"][link] = {
                 "server": {
@@ -199,19 +883,7 @@ class Espressif32Platform(PlatformBase):
                     "arguments": server_args,
                 },
                 "init_break": "thb app_main",
-                "init_cmds": [
-                    "define pio_reset_halt_target",
-                    "   monitor reset halt",
-                    "   flushregs",
-                    "end",
-                    "define pio_reset_run_target",
-                    "   monitor reset",
-                    "end",
-                    "target extended-remote $DEBUG_PORT",
-                    "$LOAD_CMDS",
-                    "pio_reset_halt_target",
-                    "$INIT_BREAK",
-                ],
+                "init_cmds": init_cmds,
                 "onboard": link in debug.get("onboard_tools", []),
                 "default": link == debug.get("default_tool"),
             }
@@ -222,35 +894,312 @@ class Espressif32Platform(PlatformBase):
         board.manifest["debug"] = debug
         return board
 
+    def _gdb_has_python(self, mcu: str) -> bool:
+        """
+        Determine whether the GDB executable for the given MCU supports embedding Python.
+        
+        Returns:
+            True if a GDB binary for the MCU accepts Python commands,
+            False otherwise (including when no matching tool/package is found or the probe fails).
+        """
+        mcu_config = self._get_mcu_config(mcu)
+        if not mcu_config:
+            return False
+        # Filter toolchains to get only GDB tools
+        gdb_tools = [tool for tool in mcu_config["toolchains"] if "gdb" in tool]
+        for tool_pkg in gdb_tools:
+            pkg_dir = self.get_package_dir(tool_pkg)
+            if not pkg_dir:
+                continue
+            is_xtensa = mcu in MCU_TOOLCHAIN_CONFIG["xtensa"]["mcus"]
+            if is_xtensa:
+                # Per-target binary first, then the generic name
+                arch_prefixes = [f"xtensa-{mcu}-elf", "xtensa-esp-elf"]
+            else:
+                arch_prefixes = ["riscv32-esp-elf"]
+            candidates = []
+            for prefix in arch_prefixes:
+                if IS_WINDOWS:
+                    candidates.append(Path(pkg_dir) / "bin" / f"{prefix}-gdb.exe")
+                candidates.append(Path(pkg_dir) / "bin" / f"{prefix}-gdb")
+            gdb_path = next((path for path in candidates if path.is_file()), None)
+            if not gdb_path:
+                continue
+            try:
+                result = subprocess.run(
+                    [str(gdb_path), "--batch-silent", "--ex", "python import os"],
+                    capture_output=True, timeout=10,
+                )
+                return result.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                logger.debug("GDB Python support probe failed for %s", gdb_path)
+                return False
+        return False
+
+    @staticmethod
+    def _get_freertos_gdb_cmds() -> List[str]:
+        """
+        Generate GDB commands to load FreeRTOS thread-awareness extension.
+        
+        Returns:
+            list[str]: GDB command strings that attempt to import the `freertos_gdb` Python
+            extension and print a warning if it is not available.
+        """
+        # Use single-line try/except to survive cleanup_cmds stripping indentation
+        return [
+            "python",
+            "try: import freertos_gdb",
+            "except ModuleNotFoundError: print('warning: python extension \"freertos_gdb\" not found.')",
+            "end",
+        ]
+
+    def _get_rom_elf_gdb_cmds(self, mcu: str) -> List[str]:
+        """
+        Generate a GDB command sequence that automatically selects and loads ROM ELF symbols for the given MCU.
+        
+        Builds a `target hookpost-extended-remote` hook using ROM metadata (from misc/roms.json) and installed
+        ROM ELF artifacts (tool-esp-rom-elfs) so the appropriate ROM symbol file is loaded after connecting to the target.
+        
+        Parameters:
+            mcu (str): MCU identifier used to look up ROM entries in misc/roms.json.
+        
+        Returns:
+            A list of GDB command strings that implement the ROM selection and loading hook; an empty list
+            if ROM metadata or ROM ELF package is not available.
+        """
+        rom_elfs_dir = self.get_package_dir("tool-esp-rom-elfs")
+        if not rom_elfs_dir or not Path(rom_elfs_dir).is_dir():
+            return []
+
+        roms_json = Path(self.get_dir()) / "misc" / "roms.json"
+        if not roms_json.is_file():
+            return []
+
+        try:
+            with open(roms_json, encoding="utf-8") as f:
+                roms = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return []
+
+        if mcu not in roms:
+            return []
+
+        rom_elfs_path = to_unix_path(str(Path(rom_elfs_dir).resolve()))
+        if not rom_elfs_path.endswith("/"):
+            rom_elfs_path += "/"
+
+        entries = roms[mcu]
+        cmds = [
+            "define target hookpost-extended-remote",
+            "set confirm off",
+        ]
+        cmds.extend(
+            self._build_rom_elf_conditions(entries, mcu, rom_elfs_path, depth=1)
+        )
+        cmds.extend([
+            "set confirm on",
+            "end",
+        ])
+        return cmds
+
+    @staticmethod
+    def _rom_date_condition(date_addr: int, date_str: str) -> str:
+        """
+        Constructs a GDB conditional expression that compares 32-bit memory words
+        starting at a given address to a provided build-date string.
+        
+        Parameters:
+            date_addr (int): Base memory address where the build-date string is stored.
+            date_str (str): Build-date string to match; compared in 4-byte little-endian chunks.
+        
+        Returns:
+            condition (str): A GDB `if` expression like `if (*(int*)0xADDR) == 0xVALUE && ...`
+            that tests each 4-byte chunk of `date_str` against memory at `date_addr`.
+        """
+        parts = []
+        for i in range(0, len(date_str), 4):
+            chunk = date_str[i:i + 4]
+            value = hex(struct.unpack('<I', chunk.encode('utf-8').ljust(4, b'\x00'))[0])
+            parts.append(f"(*(int*) {hex(date_addr + i)}) == {value}")
+        return "if " + " && ".join(parts)
+
+    @classmethod
+    def _build_rom_elf_conditions(
+        cls, entries: list, mcu: str, rom_dir: str, depth: int
+    ) -> List[str]:
+        """
+        Build a list of GDB conditional command strings that load ROM ELF symbols based on ROM revision.
+        
+        Parameters:
+            entries (list): Ordered list of ROM metadata dicts, each containing at least
+                "build_date_str_addr" (hex string), "build_date_str" (string), and "rev" (revision identifier).
+            mcu (str): MCU identifier used to form ROM ELF filenames.
+            rom_dir (str): Directory path (may include trailing slash) where ROM ELF files reside.
+            depth (int): Current recursion depth used to compute indentation for nested blocks.
+        
+        Returns:
+            List[str]: A sequence of GDB command lines forming nested if/else/end blocks that
+            evaluate ROM build-date memory values and call `add-symbol-file` for the matching ROM ELF.
+        """
+        if not entries:
+            return []
+        indent = "  " * depth
+        entry = entries[0]
+        addr = int(entry["build_date_str_addr"], 16)
+        rom_file = f"{mcu}_rev{entry['rev']}_rom.elf"
+        rom_path = f"{rom_dir}{rom_file}"
+        lines = [
+            f"{indent}{cls._rom_date_condition(addr, entry['build_date_str'])}",
+            f'{indent}  add-symbol-file "{rom_path}"',
+        ]
+        if len(entries) > 1:
+            lines.append(f"{indent}else")
+            lines.extend(
+                cls._build_rom_elf_conditions(entries[1:], mcu, rom_dir, depth + 1)
+            )
+        else:
+            lines.append(f"{indent}else")
+            lines.append(
+                f"{indent}  echo Warning: Unknown {mcu} ROM revision.\\n"
+            )
+        lines.append(f"{indent}end")
+        return lines
+
+    def _get_openocd_interface(self, link: str, board) -> str:
+        """
+        Resolve the OpenOCD interface identifier for a given debug link and board.
+        
+        Parameters:
+            link (str): Debug link name.
+            board: Board object whose `id` may affect the chosen interface.
+        
+        Returns:
+            str: OpenOCD interface string (for example "jlink", "ftdi/esp_ftdi", or "esp_usb_jtag").
+        """
+        if link in ("jlink", "cmsis-dap"):
+            return link
+        if link in ("esp-prog", "ftdi"):
+            if board.id == "esp32-s2-kaluga-1":
+                return "ftdi/esp32s2_kaluga_v1"
+            return "ftdi/esp_ftdi"
+        if link == "esp-bridge":
+            return "esp_usb_bridge"
+        if link == "esp-builtin":
+            return "esp_usb_jtag"
+        return f"ftdi/{link}"
+
+    def _get_debug_server_args(self, openocd_interface: str, debug: Dict) -> List[str]:
+        """Generate debug server arguments for OpenOCD configuration."""
+        if 'openocd_target' in debug:
+            config_type = 'target'
+            config_name = debug.get('openocd_target')
+        else:
+            config_type = 'board'
+            config_name = debug.get('openocd_board')
+        return [
+            "-s", "$PACKAGE_DIR/share/openocd/scripts",
+            "-f", f"interface/{openocd_interface}.cfg",
+            "-f", f"{config_type}/{config_name}"
+        ]
+
     def configure_debug_session(self, debug_config):
+        """
+        Configure debug session to inject debug extensions and prepare GDB load commands for flashing.
+        
+        This updates the provided debug_config in-place:
+        - Injects additional GDB init commands and ROM/FreeRTOS extensions via _inject_debug_extensions.
+        - If the debug server is OpenOCD, appends an adapter speed argument derived from debug_config.speed.
+        - If debug_config.load_cmds is the default ["load"] and valid flash image metadata is present in
+          build_data["extra"]["flash_images"], replaces load_cmds with a sequence of `monitor program_esp
+          "<path>" <offset> verify` entries for each flash image and the application binary
+          (using build_data["prog_path"] and application_offset if available;
+          falls back to DEFAULT_APP_OFFSET and logs a warning).
+        - If flash image metadata is missing or invalid, leaves load_cmds unchanged and logs a warning.
+        
+        Parameters:
+            debug_config: object
+                Debug session configuration object that must provide (at least) the attributes:
+                - build_data (dict): build metadata including an "extra" dict with "flash_images"
+                  (list of { "path", "offset" }) and optional "application_offset".
+                - server (dict | None): server configuration; if server["executable"]
+                  contains "openocd", server["arguments"] (list) will be extended.
+                - load_cmds (list): current GDB load commands; may be replaced.
+                - speed (str | None): optional adapter speed value used when configuring OpenOCD.
+        """
+        self._inject_debug_extensions(debug_config)
+
         build_extra_data = debug_config.build_data.get("extra", {})
         flash_images = build_extra_data.get("flash_images", [])
 
         if "openocd" in (debug_config.server or {}).get("executable", ""):
-            debug_config.server["arguments"].extend(
-                ["-c", "adapter speed %s" % (debug_config.speed or "5000")]
-            )
+            debug_config.server["arguments"].extend([
+                "-c", f"adapter speed {debug_config.speed or DEFAULT_DEBUG_SPEED}"
+            ])
+
+        if debug_config.load_cmds != ["load"]:
+            return
 
         ignore_conds = [
-            debug_config.load_cmds != ["load"],
             not flash_images,
-            not all([os.path.isfile(item["path"]) for item in flash_images]),
+            not all([Path(item["path"]).is_file() for item in flash_images]),
         ]
 
         if any(ignore_conds):
+            logger.warning(
+                "Falling back to default GDB load; "
+                "flash_images metadata missing or incomplete."
+            )
             return
 
         load_cmds = [
-            'monitor program_esp "{{{path}}}" {offset} verify'.format(
-                path=to_unix_path(item["path"]), offset=item["offset"]
-            )
+            f'monitor program_esp "{to_unix_path(item["path"])}" '
+            f'{item["offset"]} verify'
             for item in flash_images
         ]
-        load_cmds.append(
-            'monitor program_esp "{%s.bin}" %s verify'
-            % (
-                to_unix_path(debug_config.build_data["prog_path"][:-4]),
-                build_extra_data.get("application_offset", "0x10000"),
+        app_offset = build_extra_data.get("application_offset")
+        if not app_offset:
+            logger.warning(
+                "Application offset not found in build metadata, "
+                "falling back to default %s. Debug flashing may target "
+                "the wrong address for custom partition layouts.",
+                DEFAULT_APP_OFFSET,
             )
+            app_offset = DEFAULT_APP_OFFSET
+        load_cmds.append(
+            f'monitor program_esp '
+            f'"{to_unix_path(debug_config.build_data["prog_path"][:-4])}.bin" '
+            f'{app_offset} verify'
         )
         debug_config.load_cmds = load_cmds
+
+    def _inject_debug_extensions(self, debug_config):
+        """
+        Inject FreeRTOS thread-awareness and ROM ELF GDB commands into the debug tool's init_cmds.
+        
+        This inserts additional GDB initialization commands (FreeRTOS Python-based helpers when available
+        and ROM-ELF symbol loading commands) into debug_config.tool_settings["init_cmds"] at the position
+        immediately before the "target extended-remote" command.
+        
+        Parameters:
+            debug_config: An object representing the debug session configuration. It must provide:
+                - board_config: a mapping containing "build.mcu".
+                - tool_settings: a mapping containing "init_cmds", a list of GDB init command strings.
+        """
+        mcu = debug_config.board_config.get("build.mcu", "")
+        if not mcu:
+            return
+        tool_init_cmds = debug_config.tool_settings.get("init_cmds")
+        if tool_init_cmds is None:
+            return
+        # Find insertion point: just before "target extended-remote"
+        insert_idx = next(
+            (i for i, cmd in enumerate(tool_init_cmds)
+             if "target extended-remote" in cmd),
+            len(tool_init_cmds),
+        )
+        extra_cmds = []
+        if self._gdb_has_python(mcu):
+            extra_cmds.extend(self._get_freertos_gdb_cmds())
+        extra_cmds.extend(self._get_rom_elf_gdb_cmds(mcu))
+        for i, cmd in enumerate(extra_cmds):
+            tool_init_cmds.insert(insert_idx + i, cmd)

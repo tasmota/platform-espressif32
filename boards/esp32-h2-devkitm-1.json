@@ -6,10 +6,17 @@
     "f_image": "48000000L",
     "flash_mode": "qio",
     "mcu": "esp32h2",
-    "variant": "esp32h2"
+    "variant": "esp32h2",
+    "hwids": [
+      [
+        "0x303A",
+        "0x1001"
+      ]
+    ]
   },
   "connectivity": [
-    "bluetooth"
+    "bluetooth",
+    "zigbee"
   ],
   "debug": {
     "openocd_target": "esp32h2.cfg"

@@ -1,6 +1,6 @@
 {
   "build": {
-    "arduino":{
+    "arduino": {
       "memory_type": "qio_opi",
       "partitions": "default_16MB.csv"
     },
@@ -56,4 +56,3 @@
   "url": "https://github.com/and3rson/lilka",
   "vendor": "Anderson & friends"
 }
-

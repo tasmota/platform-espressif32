@@ -1,6 +1,6 @@
 {
   "build": {
-    "arduino":{
+    "arduino": {
       "memory_type": "opi_opi"
     },
     "boot": "opi",

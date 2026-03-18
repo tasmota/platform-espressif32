@@ -1,6 +1,6 @@
 {
   "build": {
-    "arduino":{
+    "arduino": {
       "partitions": "default_16MB.csv"
     },
     "core": "esp32",
@@ -17,6 +17,9 @@
     "ethernet",
     "can"
   ],
+  "debug": {
+    "openocd_board": "esp32-wrover.cfg"
+  },
   "frameworks": [
     "arduino",
     "espidf"
