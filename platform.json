@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2026.03.30",
+  "version": "2026.04.30",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -90,7 +90,7 @@
       "package-version": "5.3.4",
       "version": "https://github.com/pioarduino/esp_install/releases/download/v5.3.4/esp_install-v5.3.4.zip"
     },
-      "contrib-piohome": {
+    "contrib-piohome": {
       "optional": true,
       "owner": "pioarduino",
       "package-version": "3.4.4",
@@ -107,8 +107,8 @@
       "type": "tool",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "2.19.1",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/cppcheck-v2.19.1.zip"
+      "package-version": "2.20.1",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/cppcheck-v2.20.1.zip"
     },
     "tool-clangtidy": {
       "type": "tool",

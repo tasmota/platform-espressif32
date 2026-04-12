@@ -17,16 +17,12 @@ import sys
 from platformio.compat import IS_WINDOWS
 
 pyver = sys.version_info
-if IS_WINDOWS:
-    allowed = (3, 10) <= pyver < (3, 14)
-    supported = "3.10, 3.11, 3.12, 3.13"
-else:
-    allowed = (3, 10) <= pyver < (3, 15)
-    supported = "3.10, 3.11, 3.12, 3.13, 3.14"
+allowed = (3, 10) <= pyver < (3, 15)
+supported = "3.10, 3.11, 3.12, 3.13, 3.14"
+
 if not allowed:
     print(f"ERROR: Python version must be {supported}.", file=sys.stderr)
     print(f"Current Python version: {pyver.major}.{pyver.minor}.{pyver.micro}", file=sys.stderr)
-    print(f"Supported versions: {supported}", file=sys.stderr)
     raise SystemExit(1)
 
 # LZMA support check
@@ -815,6 +811,7 @@ class Espressif32Platform(PlatformBase):
         supported_debug_tools = [
             "cmsis-dap",
             "esp-prog",
+            "esp-prog-2",
             "esp-bridge",
             "iot-bus-jtag",
             "jlink",
@@ -1082,7 +1079,7 @@ class Espressif32Platform(PlatformBase):
             if board.id == "esp32-s2-kaluga-1":
                 return "ftdi/esp32s2_kaluga_v1"
             return "ftdi/esp_ftdi"
-        if link == "esp-bridge":
+        if link in ("esp-prog-2", "esp-bridge"):
             return "esp_usb_bridge"
         if link == "esp-builtin":
             return "esp_usb_jtag"

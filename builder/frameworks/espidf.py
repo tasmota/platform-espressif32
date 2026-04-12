@@ -24,7 +24,6 @@ import copy
 import importlib.util
 import json
 import os
-import platform as sys_platform
 import re
 import requests
 import shutil
@@ -448,9 +447,9 @@ def HandleArduinoIDFsettings(env):
             # Note: f_boot is NOT used for P4 as it affects bootloader filename
             flash_compile_freq = f_flash
             psram_compile_freq = f_psram if f_psram else f_flash
-            
+
             if chip_variant == "esp32p4_es":
-                print(f"Info: Detected ESP32-P4 ES variant, applying revision-based compatibility flags")
+                print("Info: Detected ESP32-P4 ES variant, applying revision-based compatibility flags")
                 board_config_flags.append("CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y")
                 board_config_flags.append("# CONFIG_ESP32P4_REV_MIN_0 is not set")
                 board_config_flags.append("CONFIG_ESP32P4_REV_MIN_1=y")
@@ -463,7 +462,7 @@ def HandleArduinoIDFsettings(env):
             compile_freq = f_boot if f_boot else f_flash
             flash_compile_freq = compile_freq
             psram_compile_freq = compile_freq
-        
+
         if f_flash and flash_compile_freq and psram_compile_freq:
             # Validate and parse frequency values
             try:
@@ -747,11 +746,25 @@ def HandleArduinoIDFsettings(env):
     
     # Convert to list for processing
     idf_config_list = [line for line in idf_config_flags.splitlines() if line.strip()]
-    
+
     # Write final configuration file with checksum
+    # Include the mtime of any referenced file (not just the raw "file://..."
+    # string) so that editing the file changes the hash and triggers recompilation. 
     custom_sdk_config_flags = ""
     if config.has_option("env:" + env["PIOENV"], "custom_sdkconfig"):
-        custom_sdk_config_flags = env.GetProjectOption("custom_sdkconfig").rstrip("\n") + "\n"
+        raw = env.GetProjectOption("custom_sdkconfig")
+        file_mtime = ""
+        for entry in raw.splitlines():
+            entry = entry.strip()
+            if entry.startswith("file://"):
+                file_ref = entry[7:]
+                file_path = file_ref if os.path.isabs(file_ref) else str(Path(PROJECT_DIR) / file_ref)
+                try:
+                    file_mtime = str(os.path.getmtime(file_path))
+                except OSError:
+                    pass
+                break
+        custom_sdk_config_flags = (file_mtime + "\n" if file_mtime else "") + raw.rstrip("\n") + "\n"
     
     write_sdkconfig_file(idf_config_list, custom_sdk_config_flags)
 
@@ -1121,12 +1134,30 @@ def filter_args(args, allowed, ignore=None):
 
 def get_app_flags(app_config, default_config):
     def _extract_flags(config):
+        import shlex
         flags = {}
         for cg in config["compileGroups"]:
             flags[cg["language"]] = []
             for ccfragment in cg["compileCommandFragments"]:
-                fragment = ccfragment.get("fragment", "").strip("\" ")
+                raw_fragment = ccfragment.get("fragment", "")
+                fragment = raw_fragment.strip("\" ")
                 if not fragment or fragment.startswith("-D"):
+                    continue
+                # Handle GCC response files (@file) introduced in IDF 5.5.3+
+                # Read the file contents and extract flags so they are
+                # included in the global build environment
+                if fragment.startswith("@"):
+                    tokens = shlex.split(raw_fragment.strip())
+                    for t in tokens:
+                        if t.startswith("@"):
+                            resp_path = t[1:]
+                            if os.path.isfile(resp_path):
+                                with open(resp_path, encoding="utf-8") as f:
+                                    for rf in shlex.split(f.read()):
+                                        if not rf.startswith("-D"):
+                                            flags[cg["language"]].append(rf)
+                        elif not t.startswith("-D"):
+                            flags[cg["language"]].append(t)
                     continue
                 flags[cg["language"]].extend(
                     click.parser.split_arg_string(fragment.strip())
@@ -1341,14 +1372,11 @@ def generate_project_ld_script(sdk_config, ignore_targets=None):
         '--objdump "{objdump}"'
     ).format(**args)
 
-    # Select appropriate linker script based on chip and revision
-    # ESP32-P4 has different linker scripts for rev < 3 and rev >= 3
+    linker_script_name = "sections.ld.in"
+    # Check for P4 >= rev3
     if idf_variant == "esp32p4" and chip_variant == "esp32p4":
-        # Regular ESP32-P4 (rev >= 3): use sections.rev3.ld.in
+        # ESP32-P4 rev >= 3 has different linker script
         linker_script_name = "sections.rev3.ld.in"
-    else:
-        # ESP32-P4 ES variant (rev < 3) or other chips: use sections.ld.in
-        linker_script_name = "sections.ld.in"
     
     initial_ld_script = str(Path(FRAMEWORK_DIR) / "components" / "esp_system" / "ld" / idf_variant / linker_script_name)
 
@@ -1359,7 +1387,7 @@ def generate_project_ld_script(sdk_config, ignore_targets=None):
             str(Path(BUILD_DIR) / "esp-idf" / "esp_system" / "ld" / linker_script_name),
         )
 
-    return env.Command(
+    ld_script = env.Command(
         str(Path("$BUILD_DIR") / "sections.ld"),
         initial_ld_script,
         env.VerboseAction(cmd, "Generating project linker script $TARGET"),
@@ -1377,6 +1405,7 @@ def _fix_component_relative_include(config, build_flags, source_index):
 
 
 def prepare_build_envs(config, default_env, debug_allowed=True):
+    import shlex
     build_envs = []
     target_compile_groups = config.get("compileGroups", [])
     if not target_compile_groups:
@@ -1400,7 +1429,28 @@ def prepare_build_envs(config, default_env, debug_allowed=True):
         build_env = default_env.Clone()
         build_env.SetOption("implicit_cache", 1)
         for cc in compile_commands:
-            build_flags = cc.get("fragment", "").strip("\" ")
+            raw_fragment = cc.get("fragment", "")
+            # Handle GCC response files (@file) introduced in IDF 5.5.3+
+            # Read the file contents and add flags individually instead of
+            # passing @file to GCC, which avoids shlex parsing issues
+            if raw_fragment.strip().startswith("@"):
+                tokens = shlex.split(raw_fragment.strip())
+                extra_flags = []
+                for t in tokens:
+                    if t.startswith("@"):
+                        # Read the response file and add its flags
+                        resp_path = t[1:]
+                        if os.path.isfile(resp_path):
+                            with open(resp_path) as f:
+                                extra_flags.extend(shlex.split(f.read()))
+                    else:
+                        extra_flags.append(t)
+                # Response file flags are already in the global env via
+                # get_app_flags; skip them here to avoid duplicates
+                # (duplicate -specs= causes GCC errors, duplicate
+                # -mlongcalls is harmless but wasteful)
+                continue
+            build_flags = raw_fragment.strip("\" ")
             if not build_flags.startswith("-D"):
                 if build_flags.startswith("-include") and ".." in build_flags:
                     source_index = cg.get("sourceIndexes")[0]
@@ -1421,9 +1471,82 @@ def prepare_build_envs(config, default_env, debug_allowed=True):
     return build_envs
 
 
+def _ensure_generated_sources(config, project_src_dir, build_dir):
+    """Run ninja to build any generated source files that don't exist yet."""
+    generated_sources = [
+        s for s in config.get("sources", [])
+        if s.get("isGenerated") and not s["path"].endswith(".rule")
+    ]
+    if not generated_sources:
+        return
+
+    ninja_buildfile = str(Path(build_dir) / "build.ninja")
+    if not os.path.isfile(ninja_buildfile):
+        return
+
+    # Read ninja build file once to find which generated targets have CUSTOM_COMMANDs
+    ninja_custom_targets = set()
+    with open(ninja_buildfile, encoding="utf8") as fp:
+        for line in fp:
+            if "CUSTOM_COMMAND" in line and line.startswith("build "):
+                # Extract the output target(s) before the colon
+                outputs = re.split(
+                    r":\s+CUSTOM_COMMAND\b", line, maxsplit=1
+                )[0].replace("build ", "").strip()
+                for out in outputs.split():
+                    out = fs.to_unix_path(
+                        out.strip()
+                        .replace("${cmake_ninja_workdir}", "")
+                        .replace("$:", ":")
+                    ).lstrip("./")
+                    if out:
+                        ninja_custom_targets.add(out)
+
+    generated_targets = []
+    for source in generated_sources:
+        src_path = source["path"]
+        if not os.path.isabs(src_path):
+            abs_path = str(Path(project_src_dir) / src_path)
+        else:
+            abs_path = src_path
+        # Ninja targets are relative to build_dir, not project_src_dir
+        try:
+            ninja_target = fs.to_unix_path(
+                str(Path(abs_path).resolve().relative_to(Path(build_dir).resolve()))
+            ).lstrip("./")
+        except ValueError:
+            continue
+        if ninja_target not in ninja_custom_targets:
+            continue
+        generated_targets.append((ninja_target, src_path))
+
+    if not generated_targets:
+        return
+
+    idf_env = os.environ.copy()
+    populate_idf_env_vars(idf_env)
+    NINJA_DIR = platform.get_package_dir("tool-ninja")
+    ninja_exe = os.path.join(NINJA_DIR, "ninja")
+    all_targets = [t for t, _ in generated_targets]
+    result = exec_command(
+        [ninja_exe, "-C", build_dir, "-k", "0", *all_targets],
+        env=idf_env,
+    )
+    if result["returncode"] != 0:
+        # Non-fatal: some targets (ULP, cert bundles) are built by other
+        # mechanisms later. SCons will error if a source is truly missing.
+        # print("Warning: ninja could not generate some sources")
+        if result.get("err"):
+            print(result["err"])
+
+
 def compile_source_files(
     config, default_env, project_src_dir, prepend_dir=None, debug_allowed=True
 ):
+    active_build_dir = (
+        str(Path(BUILD_DIR) / prepend_dir) if prepend_dir else BUILD_DIR
+    )
+    _ensure_generated_sources(config, project_src_dir, active_build_dir)
     build_envs = prepare_build_envs(config, default_env, debug_allowed)
     objects = []
     # Canonical, symlink-resolved absolute path of the components directory
@@ -1443,19 +1566,25 @@ def compile_source_files(
 
             obj_path = str(Path("$BUILD_DIR") / (prepend_dir or ""))
             src_path_obj = Path(src_path).resolve()
+            build_dir_path = Path(active_build_dir).resolve()
             try:
                 rel = src_path_obj.relative_to(components_dir_path)
                 obj_path = str(Path(obj_path) / str(rel))
             except ValueError:
-                # Preserve project substructure when possible
+                # Generated sources in the build directory
                 try:
-                    rel_prj = src_path_obj.relative_to(Path(project_src_dir).resolve())
-                    obj_path = str(Path(obj_path) / str(rel_prj))
+                    rel_build = src_path_obj.relative_to(build_dir_path)
+                    obj_path = str(Path(obj_path) / str(rel_build))
                 except ValueError:
-                    if not os.path.isabs(source["path"]):
-                        obj_path = str(Path(obj_path) / source["path"])
-                    else:
-                        obj_path = str(Path(obj_path) / os.path.basename(src_path))
+                    # Preserve project substructure when possible
+                    try:
+                        rel_prj = src_path_obj.relative_to(Path(project_src_dir).resolve())
+                        obj_path = str(Path(obj_path) / str(rel_prj))
+                    except ValueError:
+                        if not os.path.isabs(source["path"]):
+                            obj_path = str(Path(obj_path) / source["path"])
+                        else:
+                            obj_path = str(Path(obj_path) / os.path.basename(src_path))
 
             preserve_source_file_extension = board.get(
                 "build.esp-idf.preserve_source_file_extension", "yes"
@@ -1683,7 +1812,7 @@ def build_bootloader(sdk_config):
                     bootloader_script_in_path = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject" / "main" / "ld" / idf_variant / script_name_in)
                     
                     # ESP32-P4 specific: Check for bootloader.rev3.ld.in
-                    if idf_variant == "esp32p4" and chip_variant == "esp32p4":
+                    if idf_variant == "esp32p4" and chip_variant == "esp32p4" and script_basename == "bootloader.ld":
                         bootloader_rev3_path = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject" / "main" / "ld" / idf_variant / "bootloader.rev3.ld.in")
                         if os.path.isfile(bootloader_rev3_path):
                             bootloader_script_in_path = bootloader_rev3_path
@@ -2013,8 +2142,25 @@ def _get_uv_exe():
     return get_executable_path(str(Path(PLATFORMIO_DIR) / "penv"), "uv")
 
 
-def install_python_deps():
+def _get_python_deps():
+    """Get the required Python dependencies for ESP-IDF"""
+    deps = {
+        # https://github.com/platformio/platform-espressif32/issues/635
+        "cryptography": "~=44.0.0",
+        "pyparsing": ">=3.1.0,<4",
+        "idf-component-manager": "~=2.4.8",
+        "esp-idf-kconfig": "~=2.5.0"
+    }
+
+    if IS_WINDOWS:
+        deps["windows-curses"] = ">=2.4.2"
+
+    return deps
+
+
+def install_python_deps(deps=None):
     UV_EXE = _get_uv_exe()
+    deps = deps or _get_python_deps()
 
     def _get_installed_uv_packages(python_exe_path):
         result = {}
@@ -2036,19 +2182,6 @@ def install_python_deps():
     if os.path.isfile(skip_python_packages):
         return
 
-    deps = {
-        # https://github.com/platformio/platformio-core/issues/4614
-        "urllib3": "<2",
-        # https://github.com/platformio/platform-espressif32/issues/635
-        "cryptography": "~=44.0.0",
-        "pyparsing": ">=3.1.0,<4",
-        "idf-component-manager": "~=2.4",
-        "esp-idf-kconfig": "~=2.5.0"
-    }
-
-    if sys_platform.system() == "Darwin" and "arm" in sys_platform.machine().lower():
-        deps["chardet"] = ">=3.0.2,<4"
-
     python_exe_path = get_python_exe()
     installed_packages = _get_installed_uv_packages(python_exe_path)
     packages_to_install = []
@@ -2068,15 +2201,6 @@ def install_python_deps():
             env.VerboseAction(
                 f'"{UV_EXE}" pip install --python "{python_exe_path}" {packages_str}',
                 "Installing ESP-IDF's Python dependencies with uv",
-            )
-        )
-
-    if IS_WINDOWS and "windows-curses" not in installed_packages:
-        # Install windows-curses in the IDF Python environment
-        env.Execute(
-            env.VerboseAction(
-                f'"{UV_EXE}" pip install --python "{python_exe_path}" windows-curses',
-                "Installing windows-curses package with uv",
             )
         )
 
@@ -2106,7 +2230,12 @@ def ensure_python_venv_available():
             print("Failed to extract Python version from IDF virtual env!")
             return None
 
-    def _is_venv_outdated(venv_data_file):
+    def _get_deps_hash(deps_dict):
+        import hashlib
+        deps_str = json.dumps(deps_dict, sort_keys=True)
+        return hashlib.sha256(deps_str.encode()).hexdigest()
+
+    def _is_venv_outdated(venv_data_file, current_deps):
         try:
             with open(venv_data_file, "r", encoding="utf8") as fp:
                 venv_data = json.load(fp)
@@ -2122,6 +2251,11 @@ def ensure_python_venv_available():
                     print(
                         "Warning! Python version in the IDF virtual environment"
                         " differs from the current Python!"
+                    )
+                    return True
+                if venv_data.get("deps_hash", "") != _get_deps_hash(current_deps):
+                    print(
+                        "Warning! Python dependencies have changed!"
                     )
                     return True
                 return False
@@ -2156,17 +2290,39 @@ def ensure_python_venv_available():
             sys.stderr.write("Error: Failed to create a proper virtual environment. Missing the Python executable!\n")
             env.Exit(1)
 
-    venv_dir = get_idf_venv_dir()
-    venv_data_file = str(Path(venv_dir) / "pio-idf-venv.json")
-    if not os.path.isfile(venv_data_file) or _is_venv_outdated(venv_data_file):
+    def _is_venv_interpreter_valid(venv_dir):
+        python_path = get_executable_path(venv_dir, "python")
+        return os.path.isfile(python_path)
+
+    def _recreate_and_save(venv_dir, deps, venv_data_file):
         _create_venv(venv_dir)
-        install_python_deps()
+        install_python_deps(deps)
         with open(venv_data_file, "w", encoding="utf8") as fp:
             venv_info = {
                 "version": IDF_ENV_VERSION,
-                "python_version": _get_idf_venv_python_version()
+                "python_version": _get_idf_venv_python_version(),
+                "deps_hash": _get_deps_hash(deps)
             }
             json.dump(venv_info, fp, indent=2)
+
+    # Define deps here so we can track changes
+    deps = _get_python_deps()
+
+    venv_dir = get_idf_venv_dir()
+    venv_data_file = str(Path(venv_dir) / "pio-idf-venv.json")
+    recreate = False
+    if not os.path.isfile(venv_data_file):
+        recreate = True
+    elif not _is_venv_interpreter_valid(venv_dir):
+        print("Warning! Python interpreter in the IDF virtual environment is missing. Recreating...")
+        recreate = True
+    elif _is_venv_outdated(venv_data_file, deps):
+        recreate = True
+
+    if recreate:
+        _recreate_and_save(venv_dir, deps, venv_data_file)
+    else:
+        install_python_deps(deps)
 
 
 def get_python_exe():
@@ -2333,6 +2489,17 @@ framework_components_map = get_components_map(
     [project_target_name, default_config_name],
 )
 
+project_config = target_configs.get(project_target_name, {})
+default_config = target_configs.get(default_config_name, {})
+project_defines = get_app_defines(project_config)
+project_flags = get_app_flags(project_config, default_config)
+link_args = extract_link_args(elf_config)
+
+# Merge compile flags (including response file contents like -mlongcalls
+# and -specs=picolibc.specs) into the global env BEFORE building
+# components so all compilations use the correct flags
+env.MergeFlags(project_flags)
+
 build_components(env, framework_components_map, PROJECT_DIR)
 
 if not elf_config:
@@ -2341,12 +2508,6 @@ if not elf_config:
 
 for component_config in framework_components_map.values():
     env.Depends(project_ld_script, component_config["lib"])
-
-project_config = target_configs.get(project_target_name, {})
-default_config = target_configs.get(default_config_name, {})
-project_defines = get_app_defines(project_config)
-project_flags = get_app_flags(project_config, default_config)
-link_args = extract_link_args(elf_config)
 app_includes = get_app_includes(elf_config)
 
 #
@@ -2461,7 +2622,7 @@ env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", partition_table)
 #
 
 project_flags.update(link_args)
-env.MergeFlags(project_flags)
+env.MergeFlags(link_args)
 env.Prepend(
     CPPPATH=app_includes["plain_includes"],
     CPPDEFINES=project_defines,
