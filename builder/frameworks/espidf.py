@@ -1393,6 +1393,105 @@ def generate_project_ld_script(sdk_config, ignore_targets=None):
         env.VerboseAction(cmd, "Generating project linker script $TARGET"),
     )
 
+    # Relinker post-processing: move selected functions from IRAM to Flash
+    relinker_function = config.get("env:" + env["PIOENV"], "custom_relinker_function", "")
+    relinker_library = config.get("env:" + env["PIOENV"], "custom_relinker_library", "")
+    relinker_object = config.get("env:" + env["PIOENV"], "custom_relinker_object", "")
+    
+    # Validate that all three relinker settings are provided together
+    relinker_settings = {
+        "custom_relinker_function": relinker_function,
+        "custom_relinker_library": relinker_library,
+        "custom_relinker_object": relinker_object,
+    }
+    relinker_set = [key for key, value in relinker_settings.items() if value]
+    relinker_missing = [key for key, value in relinker_settings.items() if not value]
+    
+    if relinker_set and relinker_missing:
+        # Some but not all settings are provided - this is an error
+        sys.stderr.write(
+            "Error: Incomplete relinker configuration in [env:%s]\n"
+            "All three custom_relinker_* settings must be provided together:\n"
+            "  - Set: %s\n"
+            "  - Missing: %s\n"
+            "Either provide all three settings or remove all of them.\n"
+            % (env["PIOENV"], ", ".join(relinker_set), ", ".join(relinker_missing))
+        )
+        env.Exit(1)
+    
+    if relinker_function and relinker_library and relinker_object:
+        # All three settings are provided - proceed with relinker
+        # Normalize relinker CSV paths to absolute paths relative to PROJECT_DIR
+        _relinker_library = relinker_library if os.path.isabs(relinker_library) else str(Path(PROJECT_DIR) / relinker_library)
+        _relinker_object = relinker_object if os.path.isabs(relinker_object) else str(Path(PROJECT_DIR) / relinker_object)
+        _relinker_function = relinker_function if os.path.isabs(relinker_function) else str(Path(PROJECT_DIR) / relinker_function)
+        
+        _relinker_dir = str(Path(platform.get_dir()) / "builder" / "relinker")
+        _relinker_script = str(Path(_relinker_dir) / "relinker.py")
+        _relinker_objdump = args["objdump"]
+        _relinker_missing_raw = config.get(
+            "env:" + env["PIOENV"], "custom_relinker_missing_function_info", "no"
+        ).strip().lower()
+        
+        # Validate the value
+        valid_true_values = ("yes", "true", "1")
+        valid_false_values = ("no", "false", "0")
+        if _relinker_missing_raw not in valid_true_values and _relinker_missing_raw not in valid_false_values:
+            sys.stderr.write(
+                f"Warning: Invalid value '{_relinker_missing_raw}' for custom_relinker_missing_function_info. "
+                f"Valid values are: {', '.join(valid_true_values + valid_false_values)}. "
+                f"Defaulting to 'no'.\n"
+            )
+            _relinker_missing_raw = "no"
+        
+        _relinker_missing = _relinker_missing_raw in valid_true_values
+        _relinker_cmd = (
+            '"$ESPIDF_PYTHONEXE" "{script}" '
+            '--input "$BUILD_DIR/sections.ld" '
+            '--output "$BUILD_DIR/sections.ld" '
+            '--library "{library}" '
+            '--object "{object}" '
+            '--function "{function}" '
+            '--sdkconfig "{sdkconfig}" '
+            '--objdump "{objdump}" '
+            '--idf-path "{idf_path}"'
+        ).format(
+            script=_relinker_script,
+            library=_relinker_library,
+            object=_relinker_object,
+            function=_relinker_function,
+            sdkconfig=SDKCONFIG_PATH,
+            objdump=_relinker_objdump,
+            idf_path=FRAMEWORK_DIR,
+        )
+        if _relinker_missing:
+            _relinker_cmd += ' --missing_function_info'
+        def write_relinker_stamp(target, source, env):
+            with open(str(target[0]), 'w') as f:
+                f.write('done')
+
+        _relinker_config_module = str(Path(_relinker_dir) / "configuration.py")
+        _relinker_sources = [
+            str(Path("$BUILD_DIR") / "sections.ld"),
+            _relinker_script,
+            _relinker_config_module,
+            _relinker_library,
+            _relinker_object,
+            _relinker_function,
+            SDKCONFIG_PATH,
+        ]
+        relinker_step = env.Command(
+            str(Path("$BUILD_DIR") / "sections.ld.relinked"),
+            _relinker_sources,
+            [
+                env.VerboseAction(_relinker_cmd, "Running relinker to optimize IRAM usage"),
+                env.VerboseAction(write_relinker_stamp, ""),
+            ],
+        )
+        env.Depends(relinker_step, ld_script)
+
+    return ld_script
+
 
 # A temporary workaround to avoid modifying CMake mainly for the "heap" library.
 # The "tlsf.c" source file in this library has an include flag relative
@@ -2480,6 +2579,16 @@ project_ld_script = generate_project_ld_script(
     sdk_config, [project_target_name, "__pio_env"]
 )
 env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", project_ld_script)
+
+# If relinker is configured, ensure the ELF depends on the relinked stamp
+_relinker_stamp = str(Path(BUILD_DIR) / "sections.ld.relinked")
+_rl_env_section = "env:" + env["PIOENV"]
+if os.path.exists(_relinker_stamp) or (
+    config.get(_rl_env_section, "custom_relinker_function", "") and
+    config.get(_rl_env_section, "custom_relinker_library", "") and
+    config.get(_rl_env_section, "custom_relinker_object", "")
+):
+    env.Depends("$BUILD_DIR/$PROGNAME$PROGSUFFIX", _relinker_stamp)
 
 elf_config = get_project_elf(target_configs)
 default_config_name = find_default_component(target_configs)
