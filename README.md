@@ -17,11 +17,11 @@ Espressif Systems is a privately held, fabless semiconductor company renowned fo
 1. Setup new VSCode pioarduino project.
 1. Check the `platform` setting in platformio.ini file:
 
-## Tasmota release Arduino 3.3.7+ and IDF 5.5.3.260313
+## Tasmota release Arduino 3.3.8 and IDF 5.5.4.260407
 Support for the ESP32/ESP32solo1, ESP32C2, ESP32C3, ESP32C6, ESP32S2, ESP32S3, ESP32-H2 and ESP32P4 (before rev.300 and rev.300)
 ```
 [platformio]
-platform = https://github.com/tasmota/platform-espressif32/releases/download/2026.03.50/platform-espressif32.zip
+platform = https://github.com/tasmota/platform-espressif32/releases/download/2026.04.50/platform-espressif32.zip
 framework = arduino
 ```
 ## Hybrid compile: Build customized Arduino IDF libraries
