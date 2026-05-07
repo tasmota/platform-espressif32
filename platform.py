@@ -45,6 +45,7 @@ import os
 import shutil
 import struct
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Union
 
@@ -128,6 +129,52 @@ pm = ToolPackageManager()
 
 # Configure logger
 logger = logging.getLogger(__name__)
+
+
+def patch_file_downloader():
+    """Monkey-patch PlatformIO's FileDownloader to retry on transient HTTP errors."""
+    from platformio.package.download import FileDownloader
+    from platformio.package.exception import PackageException
+
+    # Skip if FileDownloader already has native retry support (platformio-core with RETRY)
+    if hasattr(FileDownloader, "RETRY"):
+        logger.debug("FileDownloader has native retry support, skipping monkey-patch")
+        return
+
+    if getattr(FileDownloader.__init__, "_patched", False):
+        return
+
+    original_init = FileDownloader.__init__
+
+    def patched_init(self, *args, **kwargs):
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                original_init(self, *args, **kwargs)
+                return
+            except PackageException as e:
+                if attempt < max_retries - 1:
+                    delay = 2 ** (attempt + 1)
+                    logger.warning(
+                        "Package download failed: %s. Retrying in %ds... (attempt %d/%d)",
+                        e, delay, attempt + 1, max_retries,
+                    )
+                    try:
+                        if hasattr(self, "_http_response") and self._http_response is not None:
+                            self._http_response.close()
+                        if hasattr(self, "_http_session"):
+                            self._http_session.close()
+                    except (AttributeError, OSError) as cleanup_err:
+                        logger.debug("Retry cleanup failed: %s", cleanup_err)
+                    time.sleep(delay)
+                else:
+                    raise
+
+    patched_init._patched = True
+    FileDownloader.__init__ = patched_init
+
+
+patch_file_downloader()
 
 
 def safe_file_operation(operation_func):
@@ -715,6 +762,19 @@ class Espressif32Platform(PlatformBase):
             if any(tool in package for tool in check_tools):
                 self.install_tool(package)
 
+    def _configure_clangd_tool(self) -> None:
+        """Install Espressif's clangd when the IDE has clangd IntelliSense enabled.
+
+        The pioarduino IDE extension exports PLATFORMIO_IDE_INTELLISENSE_ENGINE
+        so the platform can automatically install the matching tool package.
+        Espressif's clangd has native Xtensa and ESP RISC-V support that the
+        upstream clangd lacks.
+        """
+        engine = os.environ.get("PLATFORMIO_IDE_INTELLISENSE_ENGINE", "").strip().lower()
+        if engine == "clangd" and "tool-clangd-esp" in self.packages:
+            logger.info("clangd IntelliSense engine detected, installing tool-clangd-esp")
+            self.install_tool("tool-clangd-esp")
+
     def setup_python_env(self, env):
         """Configure SCons environment with centrally managed Python executable paths."""
         # Python environment is centrally managed in configure_default_packages
@@ -762,6 +822,7 @@ class Espressif32Platform(PlatformBase):
 
             self._configure_rom_elfs_for_exception_decoder(variables)
             self._configure_check_tools(variables)
+            self._configure_clangd_tool()
 
             logger.info("Package configuration completed successfully")
 
