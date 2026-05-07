@@ -328,7 +328,10 @@ if flag_custom_sdkconfig:
     env.Replace(BUILD_UNFLAGS=new_build_unflags)
 
     # add linker script esp32.rom.libc-funcs.ld for esp32 when PSRAM is NOT configured
-    if mcu == "esp32" and not has_psram_config():
+    # The esp32u (solo1/unicore) variant's pioarduino-build.py already adds this
+    # script, so appending it again here causes ld to abort with
+    # "linker script file 'esp32.rom.libc-funcs.ld' appears multiple times".
+    if mcu == "esp32" and chip_variant != "esp32u" and not has_psram_config():
         env.Append(LINKFLAGS=["-T", "esp32.rom.libc-funcs.ld"])
 
 
