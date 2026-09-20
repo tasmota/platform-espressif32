@@ -61,7 +61,7 @@ jobs:
           enable-cache: false
       - name: Install dependencies
         run: |
-          uv pip install --system pioarduino
+          uv pip install --system pioarduino==6.1.19
           pio pkg install --global --platform file://.
       - name: git clone Tasmota and add to examples
         if: "matrix.example == 'examples/tasmota'"
