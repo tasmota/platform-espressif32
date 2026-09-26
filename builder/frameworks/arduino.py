@@ -37,6 +37,8 @@ from platformio import fs
 from platformio.package.manager.tool import ToolPackageManager
 from platformio.compat import IS_WINDOWS
 
+from component_manager import board_memory_fingerprint
+
 # Constants for better performance
 UNICORE_FLAGS = {
     "CORE32SOLO1",
@@ -309,12 +311,22 @@ def has_psram_config():
             or "CONFIG_SPIRAM=y" in entry_custom_sdkconfig
             or "CONFIG_SPIRAM=y" in board_sdkconfig)
 
+
+def has_picolibc_config():
+    """Check if picolibc is configured in custom_sdkconfig"""
+    return ("CONFIG_LIBC_PICOLIBC=y" in entry_custom_sdkconfig or
+            "CONFIG_LIBC_PICOLIBC=y" in board_sdkconfig)
+
+
 # Esp32 settings for solo1 and PSRAM
 if flag_custom_sdkconfig:
     if not env.get('BUILD_UNFLAGS'):  # Initialize if not set
         env['BUILD_UNFLAGS'] = []
 
     build_unflags = " ".join(env['BUILD_UNFLAGS'])
+
+    # -Wl,--wrap=log_printf: remove always. Diagnostics is not supported with HybridCompile
+    build_unflags += " -Wl,--wrap=log_printf"
 
     # -mdisable-hardware-atomics: always for solo1, or when PSRAM is NOT configured
     if has_unicore_flags() or not has_psram_config():
@@ -358,7 +370,8 @@ def matching_custom_sdkconfig():
             if line.startswith("# TASMOTA__"):
                 cust_sdk_is_present = True
                 custom_options = entry_custom_sdkconfig
-                expected_hash = get_MD5_hash(custom_options.strip() + mcu)
+                expected_hash = get_MD5_hash(custom_options.strip() + mcu
+                                             + board_memory_fingerprint(env, board))
                 if line.split("__")[1].strip() == expected_hash:
                     return True, cust_sdk_is_present
     except (IOError, IndexError):
@@ -457,6 +470,16 @@ if ("arduino" in pioframework and "espidf" not in pioframework and
     from component_manager import ComponentManager
     component_manager = ComponentManager(env)
     component_manager.handle_component_settings()
+
+    # Create backup once if any build script patches are needed
+    needs_build_script_patch = has_picolibc_config()
+    if needs_build_script_patch:
+        component_manager.backup_manager.backup_pioarduino_build_py()
+
+    # Handle picolibc flags if picolibc is configured
+    if has_picolibc_config():
+        component_manager.apply_picolibc_flags()
+
     silent_action = env.Action(component_manager.restore_pioarduino_build_py)
     # silence scons command output
     silent_action.strfunction = lambda target, source, env: ''

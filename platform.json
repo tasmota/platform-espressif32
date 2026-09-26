@@ -12,13 +12,13 @@
     "RISC-V"
   ],
   "engines": {
-    "platformio": ">=6.1.18"
+    "platformio": ">=6.2.0"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2026.05.50",
+  "version": "2026.09.50",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,13 +33,13 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.3.8.260506/framework-arduinoespressif32.tar.xz"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.3.12/framework-arduinoespressif32.tar.xz"
     },
     "framework-espidf": {
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.5.4.260407/esp-idf-v5.5.4.tar.xz"
+      "version": "https://github.com/tasmota/esp-idf/releases/download/v5.5.5/esp-idf-v5.5.5.tar.xz"
     },
     "toolchain-xtensa-esp-elf": {
       "type": "toolchain",
@@ -66,29 +66,29 @@
       "type": "debugger",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "16.3.0+20250913",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-gdb-16.3_20250913.zip"
+      "package-version": "17.1.0+20260402",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-gdb-17.1_20260402.zip"
     },
     "tool-riscv32-esp-elf-gdb": {
       "type": "debugger",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "16.3.0+20250913",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-gdb-16.3_20250913.zip"
+      "package-version": "17.1.0+20260402",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-gdb-17.1_20260402.zip"
     },
     "tool-esptoolpy": {
       "type": "uploader",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "5.2.0",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/esptoolpy-v5.2.0.zip"
+      "package-version": "5.4.0",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/esptoolpy-v5.4.0.zip"
     },
     "tool-esp_install": {
       "type": "tool",
       "optional": false,
       "owner": "pioarduino",
-      "package-version": "5.3.4",
-      "version": "https://github.com/pioarduino/esp_install/releases/download/v5.3.4/esp_install-v5.3.4.zip"
+      "package-version": "5.3.5",
+      "version": "https://github.com/pioarduino/esp_install/releases/download/v5.3.5/esp_install-v5.3.5.zip"
     },
     "contrib-piohome": {
       "optional": true,
@@ -100,8 +100,8 @@
       "type": "debugger",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "2.1200.20260424",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/openocd-v0.12.0-esp32-20260424.zip"
+      "package-version": "2.1200.20260831",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/openocd-v0.12.0-esp32-20260831.zip"
     },
     "tool-cppcheck": {
       "type": "tool",
@@ -135,8 +135,8 @@
       "type": "tool",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "2024.10.11",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/esp-rom-elfs-20241011.zip"
+      "package-version": "2026.05.28",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/esp-rom-elfs-20260528.zip"
     },
     "tool-ninja": {
       "type": "tool",
@@ -149,8 +149,8 @@
       "type": "tool",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "4.40801.0",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/scons-4.8.1.zip"
+      "package-version": "4.41101.0",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/scons-4.11.1.zip"
     }
   }
 }
