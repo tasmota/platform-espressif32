@@ -14,11 +14,7 @@ Espressif Systems is a privately held, fabless semiconductor company renowned fo
 - Install pioarduino IDE extension.
 
 ## Usage
-1. Setup new VSCode pioarduino project.
-1. Check the `platform` setting in platformio.ini file:
-
-1. [Install PlatformIO](http://platformio.org)
-2. Create PlatformIO project and configure a platform option in [platformio.ini](http://docs.platformio.org/page/projectconf.html) file:
+ - Setup new VSCode pioarduino project and configure [platformio.ini](http://docs.platformio.org/page/projectconf.html)
 
 ### Arduino 3.3.12 based and IDF 5.5.5
 Support for the ESP32/ESP32solo1, ESP32S2, ESP32S3, ESP32C2, ESP32C3, ESP32C5, ESP32C6, ESP32C61, ESP32-H2 and ESP32-P4
