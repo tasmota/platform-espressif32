@@ -45,8 +45,8 @@
       "type": "toolchain",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "15.2.0+20251204",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-15.2.0_20251204.zip"
+      "package-version": "16.2.0+20260914",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-16.2.0_20260914.zip"
     },
     "toolchain-riscv32-esp": {
       "type": "toolchain",
