@@ -2101,6 +2101,35 @@ def find_lib_deps(components_map, elf_config, link_args=None, ignore_components=
     return result
 
 
+
+def merge_linker_scripts(flags, wrapper_path):
+    """Replace several '-T <script>' pairs by one wrapper script with INCLUDEs (Windows only)."""
+    if not IS_WINDOWS:
+        return flags
+
+    scripts, out, insert_at, i = [], [], None, 0
+    while i < len(flags):
+        if flags[i] == "-T" and i + 1 < len(flags):
+            if insert_at is None:
+                insert_at = len(out)
+            scripts.append(flags[i + 1])
+            i += 2
+        else:
+            out.append(flags[i])
+            i += 1
+
+    if len(scripts) < 2:
+        return flags
+
+    os.makedirs(os.path.dirname(wrapper_path), exist_ok=True)
+    with open(wrapper_path, "w", encoding="utf8") as fp:
+        for script in scripts:
+            fp.write('INCLUDE "%s"\n' % fs.to_unix_path(script))
+
+    out[insert_at:insert_at] = ["-T", fs.to_unix_path(wrapper_path)]
+    return out
+
+
 def build_bootloader(sdk_config):
     bootloader_src_dir = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject")
     bootloader_build_dir = str(Path(BUILD_DIR) / "bootloader")
@@ -2193,6 +2222,9 @@ def build_bootloader(sdk_config):
     extra_flags = filter_args(link_args["LINKFLAGS"], ["-T", "-u"])
     link_args["LINKFLAGS"] = sorted(
         list(set(link_args["LINKFLAGS"]) - set(extra_flags))
+    )
+    extra_flags = merge_linker_scripts(
+        extra_flags, str(Path(BUILD_DIR) / "bootloader" / "ld" / "pio_scripts.ld")
     )
 
     bootloader_env.MergeFlags(link_args)
@@ -2953,6 +2985,8 @@ try:
     extra_flags.pop(ld_index - 1)
 except (ValueError, IndexError):
     print("Warning! Couldn't find the main linker script in the CMake code model.")
+
+extra_flags = merge_linker_scripts(extra_flags, str(Path(BUILD_DIR) / "pio_scripts.ld"))
 
 #
 # Process project sources
