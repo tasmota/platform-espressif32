@@ -2102,12 +2102,16 @@ def find_lib_deps(components_map, elf_config, link_args=None, ignore_components=
 
 
 
-def merge_linker_scripts(flags, wrapper_path):
-    """Replace several '-T <script>' pairs by one wrapper script with INCLUDEs (Windows only)."""
-    if not IS_WINDOWS:
-        return flags
+def merge_linker_scripts(flags, wrapper_path, leading=None):
+    """Replace several '-T <script>' pairs by one wrapper script with INCLUDEs (Windows only).
 
-    scripts, out, insert_at, i = [], [], None, 0
+    Returns (flags, used). Leading scripts are included first and count as -T scripts.
+    """
+    leading = leading or []
+    if not IS_WINDOWS:
+        return flags, False
+
+    scripts, out, insert_at, i = list(leading), [], None, 0
     while i < len(flags):
         if flags[i] == "-T" and i + 1 < len(flags):
             if insert_at is None:
@@ -2119,15 +2123,16 @@ def merge_linker_scripts(flags, wrapper_path):
             i += 1
 
     if len(scripts) < 2:
-        return flags
+        return flags, False
 
     os.makedirs(os.path.dirname(wrapper_path), exist_ok=True)
     with open(wrapper_path, "w", encoding="utf8") as fp:
         for script in scripts:
             fp.write('INCLUDE "%s"\n' % fs.to_unix_path(script))
 
-    out[insert_at:insert_at] = ["-T", fs.to_unix_path(wrapper_path)]
-    return out
+    if not leading:
+        out[insert_at:insert_at] = ["-T", fs.to_unix_path(wrapper_path)]
+    return out, True
 
 
 def build_bootloader(sdk_config):
@@ -2223,7 +2228,7 @@ def build_bootloader(sdk_config):
     link_args["LINKFLAGS"] = sorted(
         list(set(link_args["LINKFLAGS"]) - set(extra_flags))
     )
-    extra_flags = merge_linker_scripts(
+    extra_flags, _ = merge_linker_scripts(
         extra_flags, str(Path(BUILD_DIR) / "bootloader" / "ld" / "pio_scripts.ld")
     )
 
@@ -2986,7 +2991,13 @@ try:
 except (ValueError, IndexError):
     print("Warning! Couldn't find the main linker script in the CMake code model.")
 
-extra_flags = merge_linker_scripts(extra_flags, str(Path(BUILD_DIR) / "pio_scripts.ld"))
+_main_wrapper = str(Path(BUILD_DIR) / "pio_scripts.ld")
+_has_memory_ld = env.get("LDSCRIPT_PATH") == "memory.ld"
+extra_flags, _wrapped = merge_linker_scripts(
+    extra_flags, _main_wrapper, leading=["memory.ld"] if _has_memory_ld else None
+)
+if _wrapped and _has_memory_ld:
+    env.Replace(LDSCRIPT_PATH=fs.to_unix_path(_main_wrapper))
 
 #
 # Process project sources
