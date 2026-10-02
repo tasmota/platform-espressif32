@@ -2101,6 +2101,22 @@ def find_lib_deps(components_map, elf_config, link_args=None, ignore_components=
     return result
 
 
+def dedupe_linker_scripts(flags):
+    """Drop repeated '-T <script>' pairs, comparing normalized paths (Windows-safe)."""
+    seen, out, i = set(), [], 0
+    while i < len(flags):
+        flag = flags[i]
+        if flag == "-T" and i + 1 < len(flags):
+            key = os.path.normcase(os.path.normpath(str(flags[i + 1])))
+            if key not in seen:
+                seen.add(key)
+                out.extend([flag, flags[i + 1]])
+            i += 2
+        else:
+            out.append(flag)
+            i += 1
+    return out
+
 
 def build_bootloader(sdk_config):
     bootloader_src_dir = str(Path(FRAMEWORK_DIR) / "components" / "bootloader" / "subproject")
@@ -2191,6 +2207,7 @@ def build_bootloader(sdk_config):
         debug_allowed=sdk_config.get("BOOTLOADER_COMPILER_OPTIMIZATION_DEBUG", False),
     )
     link_args = extract_link_args(elf_config)
+    extra_flags = dedupe_linker_scripts(extra_flags)
     extra_flags = filter_args(link_args["LINKFLAGS"], ["-T", "-u"])
     link_args["LINKFLAGS"] = sorted(
         list(set(link_args["LINKFLAGS"]) - set(extra_flags))
