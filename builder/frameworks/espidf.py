@@ -2207,8 +2207,8 @@ def build_bootloader(sdk_config):
         debug_allowed=sdk_config.get("BOOTLOADER_COMPILER_OPTIMIZATION_DEBUG", False),
     )
     link_args = extract_link_args(elf_config)
-    extra_flags = dedupe_linker_scripts(extra_flags)
     extra_flags = filter_args(link_args["LINKFLAGS"], ["-T", "-u"])
+    extra_flags = dedupe_linker_scripts(extra_flags)
     link_args["LINKFLAGS"] = sorted(
         list(set(link_args["LINKFLAGS"]) - set(extra_flags))
     )
