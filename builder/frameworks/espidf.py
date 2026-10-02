@@ -2991,10 +2991,12 @@ try:
 except (ValueError, IndexError):
     print("Warning! Couldn't find the main linker script in the CMake code model.")
 
-_main_wrapper = str(Path(BUILD_DIR) / "pio_scripts.ld")
+_main_wrapper = str(Path(BUILD_DIR) / "ld" / "pio_scripts.ld")
 _has_memory_ld = env.get("LDSCRIPT_PATH") == "memory.ld"
 extra_flags, _wrapped = merge_linker_scripts(
-    extra_flags, _main_wrapper, leading=["memory.ld"] if _has_memory_ld else None
+    extra_flags,
+    _main_wrapper,
+    leading=[str(Path(BUILD_DIR) / "memory.ld")] if _has_memory_ld else None,
 )
 if _wrapped and _has_memory_ld:
     env.Replace(LDSCRIPT_PATH=fs.to_unix_path(_main_wrapper))
