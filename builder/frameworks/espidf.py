@@ -885,7 +885,7 @@ def HandleArduinoIDFsettings(env):
             print("Error: Arduino framework required for sdkconfig processing")
             return
         """Write the final sdkconfig.defaults file with checksum."""
-        sdkconfig_src = str(Path(arduino_libs_mcu) / "sdkconfig")
+        sdkconfig_src = str(Path(ARDUINO_FRAMEWORK_DIR) / "tools" / "esp32-arduino-libs" / chip_variant / "sdkconfig")
         sdkconfig_dst = str(Path(PROJECT_DIR) / "sdkconfig.defaults")
         if not os.path.isfile(sdkconfig_src):
             sys.stderr.write(f"Error: Missing Arduino sdkconfig template at '{sdkconfig_src}'\n")
