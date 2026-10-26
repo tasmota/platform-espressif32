@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2026.09.50",
+  "version": "2026.10.50",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
