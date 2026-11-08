@@ -45,15 +45,15 @@
       "type": "toolchain",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "16.2.0+20260914",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-16.2.0_20260914.zip"
+      "package-version": "16.2.0+20261105",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-16.2.0_20261105.zip"
     },
     "toolchain-riscv32-esp": {
       "type": "toolchain",
       "optional": true,
       "owner": "pioarduino",
-      "package-version": "16.2.0+20260914",
-      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-16.2.0_20260914.zip"
+      "package-version": "16.2.0+20261105",
+      "version": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-16.2.0_20261105.zip"
     },
     "toolchain-esp32ulp": {
       "type": "toolchain",
