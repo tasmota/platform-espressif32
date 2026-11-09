@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/tasmota/platform-espressif32.git"
   },
-  "version": "2026.09.50",
+  "version": "2026.11.50",
   "frameworks": {
     "arduino": {
       "script": "builder/frameworks/arduino.py"
@@ -33,7 +33,7 @@
       "type": "framework",
       "optional": true,
       "owner": "tasmota",
-      "version": "https://github.com/Jason2866/esp32-arduino-lib-builder/releases/download/0911-1125-5.5_gcc153/framework-arduinoespressif32-release_v5.5_gcc153-780210a6.tar.xz"
+      "version": "https://github.com/tasmota/arduino-esp32/releases/download/v3.3.12-2/framework-arduinoespressif32.tar.xz"
     },
     "framework-espidf": {
       "type": "framework",
