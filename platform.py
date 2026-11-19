@@ -17,8 +17,8 @@ import sys
 from platformio.compat import IS_WINDOWS
 
 pyver = sys.version_info
-allowed = (3, 10) <= pyver < (3, 15)
-supported = "3.10, 3.11, 3.12, 3.13, 3.14"
+allowed = (3, 10) <= pyver < (3, 16)
+supported = "3.10, 3.11, 3.12, 3.13, 3.14, 3.15"
 
 if not allowed:
     print(f"ERROR: Python version must be {supported}.", file=sys.stderr)
@@ -109,12 +109,6 @@ FORMAT_PACKAGES = [
     "tool-clang-format"
 ]
 
-# System-specific configuration
-# Set Platformio env var to use windows_amd64 for all windows architectures
-# only windows_amd64 native espressif toolchains are available
-if IS_WINDOWS:
-    os.environ["PLATFORMIO_SYSTEM_TYPE"] = "windows_amd64"
-
 # exit without git
 if not shutil.which("git"):
     print("Git not found in PATH, please install Git.", file=sys.stderr)
@@ -134,51 +128,6 @@ pm = ToolPackageManager()
 # Configure logger
 logger = logging.getLogger(__name__)
 
-
-def patch_file_downloader():
-    """Monkey-patch PlatformIO's FileDownloader to retry on transient HTTP errors."""
-    from platformio.package.download import FileDownloader
-    from platformio.package.exception import PackageException
-
-    # Skip if FileDownloader already has native retry support (platformio-core with RETRY)
-    if hasattr(FileDownloader, "RETRY"):
-        logger.debug("FileDownloader has native retry support, skipping monkey-patch")
-        return
-
-    if getattr(FileDownloader.__init__, "_patched", False):
-        return
-
-    original_init = FileDownloader.__init__
-
-    def patched_init(self, *args, **kwargs):
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                original_init(self, *args, **kwargs)
-                return
-            except PackageException as e:
-                if attempt < max_retries - 1:
-                    delay = 2 ** (attempt + 1)
-                    logger.warning(
-                        "Package download failed: %s. Retrying in %ds... (attempt %d/%d)",
-                        e, delay, attempt + 1, max_retries,
-                    )
-                    try:
-                        if hasattr(self, "_http_response") and self._http_response is not None:
-                            self._http_response.close()
-                        if hasattr(self, "_http_session"):
-                            self._http_session.close()
-                    except (AttributeError, OSError) as cleanup_err:
-                        logger.debug("Retry cleanup failed: %s", cleanup_err)
-                    time.sleep(delay)
-                else:
-                    raise
-
-    patched_init._patched = True
-    FileDownloader.__init__ = patched_init
-
-
-patch_file_downloader()
 
 def safe_file_operation(operation_func):
     """Decorator for safe filesystem operations with error handling."""
