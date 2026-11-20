@@ -3273,7 +3273,6 @@ if ("arduino" in env.subst("$PIOFRAMEWORK")) and ("espidf" not in env.subst("$PI
         arduino_libs = str(Path(ARDUINO_FRAMEWORK_DIR) / "tools" / "esp32-arduino-libs")
         lib_src = str(Path(env_build) / "esp-idf")
         lib_dst = str(Path(arduino_libs) / chip_variant / "lib")
-        build_script = str(Path(arduino_libs) / chip_variant / "pioarduino-build.py")
         ld_dst = str(Path(arduino_libs) / chip_variant / "ld")
         mem_var = str(arduino_mem_var)
         for d in (lib_dst, ld_dst, mem_var, str(Path(mem_var) / "include")):
